@@ -109,9 +109,47 @@ function translateRiskLevel(level) {
   const m = {
     'high': '高风险', 'medium': '中风险', 'low': '低风险',
     'HIGH': '高风险', 'MEDIUM': '中风险', 'LOW': '低风险',
-    'report.risk_high': '高风险', 'report.risk_mid': '中风险', 'report.risk_low': '低风险'
+    'report.risk_high': '高风险', 'report.risk_mid': '中风险', 'report.risk_low': '低风险',
+    'report.severity_high': '高', 'report.severity_mid': '中', 'report.severity_low': '低',
   };
   return m[level] || level;
+}
+
+// 建议字段翻译（处理 i18n key）
+function translateSuggestion(s) {
+  if (!s) return '';
+  const m = {
+    'report.risk_suggest': '建议',
+    'report.risk_suggestion': '建议',
+    'report.risk_dba': 'DBA',
+    'report.risk_fix_ts': '查询表空间使用情况',
+    'report.risk_fix_alert': '检查Alert日志具体内容',
+    'report.risk_fix_locked': '查看锁定账户',
+    'report.risk_fix_sql': '修复 SQL',
+    'report.severity_high': '高',
+    'report.severity_mid': '中',
+    'report.severity_low': '低',
+  };
+  return m[s] || s;
+}
+
+// 描述字段翻译（处理 i18n key）
+function translateDesc(s) {
+  if (!s) return '';
+  const m = {
+    'report.risk_tablespace': '表空间',
+    'report.risk_ts_high': '表空间使用率过高',
+    'report.risk_ts_mid': '表空间使用率偏高',
+    'report.risk_invalid_obj': '无效对象',
+    'report.risk_invalid_desc': '存在无效对象',
+    'report.risk_locked': '账户锁定',
+    'report.risk_locked_desc': '存在锁定账户',
+    'report.risk_alert': 'Alert 日志错误',
+    'report.risk_alert_desc': '近7天存在错误日志',
+    'report.risk_summary': '风险汇总',
+    'report.risk_detail': '问题明细',
+  };
+  return m[s] || s;
 }
 
 function scoreColor(s) {
@@ -283,11 +321,12 @@ function renderDbReport(data) {
   if (r.issues && r.issues.length > 0) {
     html += '<div class="section"><h2>⚠️ 发现的问题</h2>';
     r.issues.forEach(i => {
-      const text = typeof i === 'string' ? i : (i.description || i.title || JSON.stringify(i));
+      const rawText = typeof i === 'string' ? i : (i.description || i.title || JSON.stringify(i));
+      const text = translateDesc(rawText);
       const rawLevel = i.level || '';
       const level = translateRiskLevel(rawLevel);
       const levelColor = level === '高风险' ? '#f85149' : level === '中风险' ? '#e3b341' : '#8b949e';
-      const suggestion = i.suggestion || '';
+      const suggestion = translateSuggestion(i.suggestion || '');
       html += `<div class="issue-item">
         ${level ? `<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;margin-right:8px;background:${levelColor}20;color:${levelColor}">${esc(level)}</span>` : ''}
         ${esc(text)}

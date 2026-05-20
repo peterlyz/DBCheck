@@ -34,6 +34,29 @@ def _get_scheduler():
         _scheduler = get_scheduler()
     return _scheduler
 
+# ── i18n key 翻译辅助（供任务函数/API 函数共用）────────────────────
+_I18N_MAP = {
+    'report.risk_high': '高风险', 'report.risk_mid': '中风险', 'report.risk_low': '低风险',
+    'report.risk_suggest': '建议', 'report.risk_suggestion': '建议',
+    'report.risk_dba': 'DBA',
+    'report.risk_tablespace': '表空间',
+    'report.risk_ts_high': '表空间使用率过高', 'report.risk_ts_mid': '表空间使用率偏高',
+    'report.risk_invalid_obj': '无效对象', 'report.risk_invalid_desc': '存在无效对象',
+    'report.risk_locked': '账户锁定', 'report.risk_locked_desc': '存在锁定账户',
+    'report.risk_alert': 'Alert日志错误', 'report.risk_alert_desc': '近7天存在错误日志',
+    'report.risk_fix_ts': '查询表空间使用情况',
+    'report.risk_fix_alert': '检查Alert日志具体内容',
+    'report.risk_fix_locked': '查看锁定账户',
+    'report.risk_fix_sql': '修复 SQL',
+    'report.severity_high': '高', 'report.severity_mid': '中', 'report.severity_low': '低',
+    'report.health_excellent': '优秀', 'report.health_good': '良好',
+    'report.health_fair': '一般', 'report.health_attention': '需关注',
+}
+def _tr(s):
+    """翻译 i18n key（如 report.risk_high → 高风险），非 key 原样返回"""
+    if not s: return ''
+    return _I18N_MAP.get(s, s)
+
 # async_mode='threading' 最稳定，跨平台/打包零兼容问题，
 # 满足 DBCheck Web UI 低并发使用场景（单用户/少量连接）。
 # 不依赖 gevent/eventlet，避免打包后版本冲突。
@@ -338,7 +361,7 @@ def run_mysql_task(task_id, db_info, inspector_name):
                     'risk_count': risk_count,
                     'risk_level': risk_level,
                     'finished_at': datetime.datetime.now().isoformat(),
-                    'issues': [{'level': item.get('col2', ''), 'description': item.get('col1', ''), 'suggestion': item.get('col3', '')} for item in (task.get('auto_analyze') or [])],
+                    'issues': [{'level': _tr(item.get('col2', '')), 'description': _tr(item.get('col1', '')), 'suggestion': _tr(item.get('col3', ''))} for item in (task.get('auto_analyze') or [])],
                     'report_file': ofile,
                     'report_name': file_name,
                 }
@@ -525,7 +548,7 @@ def run_pg_task(task_id, db_info, inspector_name):
                     'risk_count': risk_count,
                     'risk_level': risk_level,
                     'finished_at': datetime.datetime.now().isoformat(),
-                    'issues': [{'level': item.get('col2', ''), 'description': item.get('col1', ''), 'suggestion': item.get('col3', '')} for item in (task.get('auto_analyze') or [])],
+                    'issues': [{'level': _tr(item.get('col2', '')), 'description': _tr(item.get('col1', '')), 'suggestion': _tr(item.get('col3', ''))} for item in (task.get('auto_analyze') or [])],
                     'report_file': ofile,
                     'report_name': file_name,
                 }
@@ -678,9 +701,9 @@ def run_oracle_full_task(task_id, db_info, inspector_name):
                 _issues = []
                 for a in (auto_analyze or []):
                     _issues.append({
-                        'level': str(a.get('col2', '')),
-                        'description': str(a.get('col3', a.get('col1', ''))),
-                        'suggestion': str(a.get('col5', a.get('suggestion', '')))
+                        'level': _tr(str(a.get('col2', ''))),
+                        'description': _tr(str(a.get('col3', a.get('col1', '')))),
+                        'suggestion': _tr(str(a.get('col5', a.get('suggestion', '')))),
                     })
                 _h_status = 'healthy' if health_score >= 85 else ('good' if health_score >= 70 else ('fair' if health_score >= 50 else 'poor'))
                 task['result'] = {
@@ -883,7 +906,7 @@ def run_dm_task(task_id, db_info, inspector_name):
                     'risk_count': risk_count,
                     'risk_level': risk_level,
                     'finished_at': datetime.datetime.now().isoformat(),
-                    'issues': [{'level': item.get('col2', ''), 'description': item.get('col1', ''), 'suggestion': item.get('col3', '')} for item in (task.get('auto_analyze') or [])],
+                    'issues': [{'level': _tr(item.get('col2', '')), 'description': _tr(item.get('col1', '')), 'suggestion': _tr(item.get('col3', ''))} for item in (task.get('auto_analyze') or [])],
                     'report_file': ofile,
                     'report_name': os.path.basename(ofile) if ofile else '',
                 }
@@ -1083,7 +1106,7 @@ def run_sqlserver_task(task_id, db_info, inspector_name):
                     'risk_count': risk_count,
                     'risk_level': risk_level,
                     'finished_at': datetime.datetime.now().isoformat(),
-                    'issues': [{'level': item.get('col2', ''), 'description': item.get('col1', ''), 'suggestion': item.get('col3', '')} for item in (task.get('auto_analyze') or [])],
+                    'issues': [{'level': _tr(item.get('col2', '')), 'description': _tr(item.get('col1', '')), 'suggestion': _tr(item.get('col3', ''))} for item in (task.get('auto_analyze') or [])],
                     'report_file': ofile,
                     'report_name': os.path.basename(ofile) if ofile else '',
                 }
@@ -1271,7 +1294,7 @@ def run_tidb_task(task_id, db_info, inspector_name):
                     'risk_count': risk_count,
                     'risk_level': risk_level,
                     'finished_at': datetime.datetime.now().isoformat(),
-                    'issues': [{'level': item.get('col2', ''), 'description': item.get('col1', ''), 'suggestion': item.get('col3', '')} for item in (task.get('auto_analyze') or [])],
+                    'issues': [{'level': _tr(item.get('col2', '')), 'description': _tr(item.get('col1', '')), 'suggestion': _tr(item.get('col3', ''))} for item in (task.get('auto_analyze') or [])],
                     'report_file': ofile,
                     'report_name': file_name,
                 }
@@ -1457,9 +1480,9 @@ def run_ivorysql_task(task_id, db_info, inspector_name):
                 for item in auto_analyze:
                     if isinstance(item, dict):
                         _issues.append({
-                            'level': item.get('col2', ''),
-                            'description': item.get('col1', ''),
-                            'suggestion': item.get('col3', ''),
+                            'level': _tr(item.get('col2', '')),
+                            'description': _tr(item.get('col1', '')),
+                            'suggestion': _tr(item.get('col3', '')),
                         })
             if task:
                 task['result'] = {
@@ -1930,8 +1953,9 @@ def api_report_detail(filename):
                             try:
                                 items = json.loads(auto_analyze_json)
                                 # auto_analyze 结构: list of dicts with keys col1(描述), col2(等级), col3(建议)
+                                # col1/col2/col3 可能存的是 i18n key，需要翻译
                                 result['issues'] = [
-                                    {'level': it.get('col2', ''), 'description': it.get('col1', ''), 'suggestion': it.get('col3', '')}
+                                    {'level': _tr(it.get('col2', '')), 'description': _tr(it.get('col1', '')), 'suggestion': _tr(it.get('col3', ''))}
                                     for it in items
                                 ]
                             except Exception:
@@ -2544,6 +2568,17 @@ def api_db_inspect_share():
         task_id = data.get('task_id', '')
         if not result:
             return jsonify({'ok': False, 'msg': '缺少巡检结果数据'})
+        # 翻译 issues 中的 i18n key，避免分享页面显示原始 key
+        if 'issues' in result and isinstance(result.get('issues'), list):
+            for item in result['issues']:
+                if isinstance(item, dict):
+                    if 'level' in item:
+                        item['level'] = _tr(item['level'])
+                    if 'description' in item:
+                        item['description'] = _tr(item['description'])
+                    if 'suggestion' in item:
+                        item['suggestion'] = _tr(item['suggestion'])
+
         from server_inspect import create_share
         db_type = result.get('db_type', '数据库')
         host = result.get('host', result.get('ip', 'unknown'))
@@ -2647,6 +2682,18 @@ def api_task_status(task_id):
     offset = int(request.args.get('offset', 0))
     log_list = task.get('log', [])
     result = task.get('result', {})
+
+    # 翻译 result.issues 中的 i18n key，确保前端拿到的是中文
+    if isinstance(result, dict) and 'issues' in result and isinstance(result.get('issues'), list):
+        for item in result['issues']:
+            if isinstance(item, dict):
+                if 'level' in item:
+                    item['level'] = _tr(item['level'])
+                if 'description' in item:
+                    item['description'] = _tr(item['description'])
+                if 'suggestion' in item:
+                    item['suggestion'] = _tr(item['suggestion'])
+
     resp = {
         'ok': True,
         'status': task.get('status', 'running'),
