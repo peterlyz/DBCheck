@@ -718,6 +718,24 @@ select option { background: var(--surface2); }
 .report-item .ri-name { font-size: 13px; font-weight: 500; }
 .report-item .ri-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 .report-item .btn { flex-shrink: 0; }
+/* 报告复选框 */
+.report-item .ri-checkbox { flex-shrink: 0; width: 16px; height: 16px; cursor: pointer; accent-color: var(--accent); }
+/* 过滤按钮 */
+.filter-btn {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  transition: all var(--trans);
+}
+.filter-btn:hover { border-color: var(--accent); color: var(--text); }
+.filter-btn.filter-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+/* 批量操作栏 */
+#batch-bar { display: none; align-items: center; gap: 10px; }
+#batch-bar.show { display: flex; }
 
 /* ─── Home Page ─── */
 .home-header {
@@ -3225,6 +3243,9 @@ function formatBytes(bytes) {
     <div class="nav-item" onclick="showPage('license')" id="nav-license" style="display:none;">
       <span class="icon">🔑</span> <span data-i18n="webui.nav_license">许可证</span>
     </div>
+    <div class="nav-item" onclick="showAboutModal()" id="nav-about">
+      <span class="icon">💡</span> <span data-i18n="webui.nav_about">关于 DBCheck</span>
+    </div>
 
     <div class="sidebar-footer">
       Oracle · MySQL · PostgreSQL · SQL Server<br/>DM · TiDB · IvorySQL<br/>
@@ -3740,6 +3761,25 @@ function formatBytes(bytes) {
           <div class="card-title">
             <span>📄</span> <span data-i18n="webui.reports_title">历史巡检报告</span>
             <button class="btn btn-ghost" style="margin-left:auto;padding:6px 12px;font-size:12px" onclick="loadReports()" data-i18n="webui.reports_refresh">↻ 刷新</button>
+          </div>
+          <!-- 数据库类型过滤栏 -->
+          <div id="report-filter-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:0 4px">
+            <button class="filter-btn filter-active" data-type="" onclick="filterReports('')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">全部</button>
+            <button class="filter-btn" data-type="MySQL" onclick="filterReports('MySQL')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🐬 MySQL</button>
+            <button class="filter-btn" data-type="PostgreSQL" onclick="filterReports('PostgreSQL')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🐘 PostgreSQL</button>
+            <button class="filter-btn" data-type="Oracle" onclick="filterReports('Oracle')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🔴 Oracle</button>
+            <button class="filter-btn" data-type="DM8" onclick="filterReports('DM8')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🟡 达梦 DM8</button>
+            <button class="filter-btn" data-type="SQLServer" onclick="filterReports('SQLServer')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🟠 SQL Server</button>
+            <button class="filter-btn" data-type="TiDB" onclick="filterReports('TiDB')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🟢 TiDB</button>
+            <button class="filter-btn" data-type="IvorySQL" onclick="filterReports('IvorySQL')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🐘 IvorySQL</button>
+          </div>
+          <!-- 批量操作栏（默认隐藏） -->
+          <div id="batch-bar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;user-select:none">
+              <input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this.checked)"> 全选
+            </label>
+            <span id="selected-count" style="font-size:12px;color:var(--text-muted)">已选 0 项</span>
+            <button class="btn btn-danger" style="margin-left:auto;font-size:12px;padding:6px 16px" onclick="batchDeleteReports()">🗑️ 批量删除</button>
           </div>
           <div class="reports-list" id="reports-list">
             <div style="text-align:center;color:var(--text-muted);padding:32px" data-i18n="webui.reports_loading">正在加载...</div>
@@ -5934,57 +5974,135 @@ async function shareDbInspectReport(taskId) {
 }
 
 // ─── Reports ───
+let currentReportFilter = '';   // 当前数据库类型过滤
+let allReportFiles = [];        // 缓存原始文件列表
+
 async function loadReports() {
   const list = document.getElementById('reports-list');
   list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px">' + i18n('webui.reports_loading') + '</div>';
   try {
     const res = await fetch('/api/reports');
     const data = await res.json();
-    if (!data.files || data.files.length === 0) {
-      list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:48px">' + i18n('webui.reports_empty') + '</div>';
-      return;
-    }
-    list.innerHTML = data.files.map(f => {
-      const isMySQL = f.name.includes('MySQL');
-      const isPG    = f.name.includes('PostgreSQL') || f.name.includes('Postgres');
-      const isOracle = f.name.includes('Oracle');
-      const isDM    = f.name.includes('DM8') || f.name.includes('达梦');
-      const isSQLServer = f.name.includes('SQLServer');
-      const isTiDB = f.name.includes('TiDB');
-      const tagHtml = isMySQL ? '<span class="tag tag-mysql">' + i18n('webui.db_type_mysql') + '</span>' : isPG ? '<span class="tag tag-pg">' + i18n('webui.db_type_pg') + '</span>' : isOracle ? '<span class="tag tag-oracle">' + i18n('webui.db_type_oracle') + '</span>' : isDM ? '<span class="tag tag-dm">' + i18n('webui.db_type_dm') + '</span>' : isSQLServer ? '<span class="tag tag-sqlserver">' + i18n('webui.db_type_sqlserver') + '</span>' : isTiDB ? '<span class="tag tag-tidb">' + i18n('webui.db_type_tidb') + '</span>' : '';
-      const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+' MB' : (f.size/1024).toFixed(1)+' KB';
-      const dt = new Date(f.mtime*1000).toLocaleString('zh-CN');
-      const high = f.high || 0;
-      const mid = f.mid || 0;
-      const low = f.low || 0;
-      const total = high + mid + low;
-      const riskBadges = total > 0
-        ? '<span class="severity-tag severity-high" style="margin-left:8px;font-size:11px;padding:2px 7px">🔴 '+i18n('webui.risk_high')+' '+high+'</span><span class="severity-tag severity-mid" style="margin-left:4px;font-size:11px;padding:2px 7px">🟡 '+i18n('webui.risk_mid')+' '+mid+'</span><span class="severity-tag severity-low" style="margin-left:4px;font-size:11px;padding:2px 7px">🟢 '+i18n('webui.risk_low')+' '+low+'</span>'
-        : '<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">'+i18n('webui.risk_no_issues')+'</span>';
-      // auto_analyze 使用 base64 编码传递，避免 JSON 特殊字符破坏 HTML
-      const autoAnalyzeB64 = btoa(unescape(encodeURIComponent(f.auto_analyze || '[]')));
-      const issueBtn = total > 0
-        ? '<button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;margin-left:4px" onclick="showReportIssues(\'' + escHtml(f.name).replace(/'/g, "\\'") + '\', \'' + autoAnalyzeB64 + '\')">'+i18n('webui.btn_report_issues')+'</button>'
-        : '';
-      return `
-        <div class="report-item">
-          <div class="ri-icon">📄</div>
-          <div class="ri-info">
-            <div class="ri-name">${escHtml(f.name)} ${tagHtml} ${riskBadges}</div>
-            <div class="ri-meta">${dt} · ${size}</div>
-          </div>
-          <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-            ${issueBtn}
-            <a class="btn btn-ghost" style="font-size:12px;padding:7px 14px"
-               href="/api/download_file?name=${encodeURIComponent(f.name)}" download>${i18n('webui.btn_download_report')}</a>
-            <button class="btn btn-ghost" style="font-size:12px;padding:7px 12px" onclick="shareReportFile('${escHtml(f.name).replace(/'/g, "\\'")}')">📤 分享</button>
-            <button class="btn btn-danger" style="font-size:12px;padding:7px 12px" onclick="deleteReport('${escHtml(f.name).replace(/'/g, "\\'")}')">${i18n('webui.btn_delete_report')}</button>
-          </div>
-        </div>`;
-    }).join('');
+    allReportFiles = data.files || [];
+    renderReports();
   } catch(e) {
     list.innerHTML = `<div class="status-banner err">${i18n('webui.reports_load_fail')}: ${escHtml(e.message)}</div>`;
   }
+}
+
+function renderReports() {
+  const list = document.getElementById('reports-list');
+  let files = allReportFiles;
+  if (currentReportFilter) {
+    files = files.filter(f => {
+      const n = f.name;
+      if (currentReportFilter === 'MySQL')      return n.includes('MySQL');
+      if (currentReportFilter === 'PostgreSQL') return n.includes('PostgreSQL') || n.includes('Postgres');
+      if (currentReportFilter === 'Oracle')     return n.includes('Oracle');
+      if (currentReportFilter === 'DM8')        return n.includes('DM8') || n.includes('达梦');
+      if (currentReportFilter === 'SQLServer')  return n.includes('SQLServer');
+      if (currentReportFilter === 'TiDB')       return n.includes('TiDB');
+      if (currentReportFilter === 'IvorySQL')   return n.includes('IvorySQL');
+      return true;
+    });
+  }
+  if (files.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:48px">' + i18n('webui.reports_empty') + '</div>';
+    updateBatchBar();
+    return;
+  }
+  list.innerHTML = files.map(f => {
+    const isMySQL = f.name.includes('MySQL');
+    const isPG    = f.name.includes('PostgreSQL') || f.name.includes('Postgres');
+    const isOracle = f.name.includes('Oracle');
+    const isDM    = f.name.includes('DM8') || f.name.includes('达梦');
+    const isSQLServer = f.name.includes('SQLServer');
+    const isTiDB = f.name.includes('TiDB');
+    const tagHtml = isMySQL ? '<span class="tag tag-mysql">' + i18n('webui.db_type_mysql') + '</span>' : isPG ? '<span class="tag tag-pg">' + i18n('webui.db_type_pg') + '</span>' : isOracle ? '<span class="tag tag-oracle">' + i18n('webui.db_type_oracle') + '</span>' : isDM ? '<span class="tag tag-dm">' + i18n('webui.db_type_dm') + '</span>' : isSQLServer ? '<span class="tag tag-sqlserver">' + i18n('webui.db_type_sqlserver') + '</span>' : isTiDB ? '<span class="tag tag-tidb">' + i18n('webui.db_type_tidb') + '</span>' : '';
+    const size = f.size > 1024*1024 ? (f.size/1024/1024).toFixed(1)+' MB' : (f.size/1024).toFixed(1)+' KB';
+    const dt = new Date(f.mtime*1000).toLocaleString('zh-CN');
+    const high = f.high || 0;
+    const mid = f.mid || 0;
+    const low = f.low || 0;
+    const total = high + mid + low;
+    const riskBadges = total > 0
+      ? '<span class="severity-tag severity-high" style="margin-left:8px;font-size:11px;padding:2px 7px">🔴 '+i18n('webui.risk_high')+' '+high+'</span><span class="severity-tag severity-mid" style="margin-left:4px;font-size:11px;padding:2px 7px">🟡 '+i18n('webui.risk_mid')+' '+mid+'</span><span class="severity-tag severity-low" style="margin-left:4px;font-size:11px;padding:2px 7px">🟢 '+i18n('webui.risk_low')+' '+low+'</span>'
+      : '<span style="margin-left:8px;font-size:12px;color:var(--text-muted)">'+i18n('webui.risk_no_issues')+'</span>';
+    const autoAnalyzeB64 = btoa(unescape(encodeURIComponent(f.auto_analyze || '[]')));
+    const issueBtn = total > 0
+      ? '<button class="btn btn-ghost" style="font-size:12px;padding:6px 12px;margin-left:4px" onclick="showReportIssues(\'' + escHtml(f.name).replace(/'/g, "\\'") + '\', \'' + autoAnalyzeB64 + '\')">'+i18n('webui.btn_report_issues')+'</button>'
+      : '';
+    return `
+      <div class="report-item">
+        <input type="checkbox" class="ri-checkbox" data-name="${escHtml(f.name)}" onchange="updateBatchBar()">
+        <div class="ri-icon">📄</div>
+        <div class="ri-info">
+          <div class="ri-name">${escHtml(f.name)} ${tagHtml} ${riskBadges}</div>
+          <div class="ri-meta">${dt} · ${size}</div>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+          ${issueBtn}
+          <a class="btn btn-ghost" style="font-size:12px;padding:7px 14px"
+             href="/api/download_file?name=${encodeURIComponent(f.name)}" download>${i18n('webui.btn_download_report')}</a>
+          <button class="btn btn-ghost" style="font-size:12px;padding:7px 12px" onclick="shareReportFile('${escHtml(f.name).replace(/'/g, "\\'")}')">📤 分享</button>
+          <button class="btn btn-danger" style="font-size:12px;padding:7px 12px" onclick="deleteReport('${escHtml(f.name).replace(/'/g, "\\'")}')">${i18n('webui.btn_delete_report')}</button>
+        </div>
+      </div>`;
+  }).join('');
+  updateBatchBar();
+}
+
+function filterReports(type) {
+  currentReportFilter = type;
+  document.querySelectorAll('#report-filter-bar .filter-btn').forEach(btn => {
+    btn.classList.toggle('filter-active', btn.dataset.type === type);
+  });
+  // 清空已选
+  document.getElementById('select-all-cb').checked = false;
+  renderReports();
+}
+
+function updateBatchBar() {
+  const cbs = document.querySelectorAll('#reports-list .ri-checkbox');
+  const checked = document.querySelectorAll('#reports-list .ri-checkbox:checked');
+  const bar = document.getElementById('batch-bar');
+  const countEl = document.getElementById('selected-count');
+  countEl.textContent = '已选 ' + checked.length + ' 项';
+  bar.style.display = checked.length > 0 ? 'flex' : 'none';
+  // 更新全选状态
+  const selectAll = document.getElementById('select-all-cb');
+  selectAll.checked = cbs.length > 0 && checked.length === cbs.length;
+}
+
+function toggleSelectAll(checked) {
+  document.querySelectorAll('#reports-list .ri-checkbox').forEach(cb => cb.checked = checked);
+  updateBatchBar();
+}
+
+async function batchDeleteReports() {
+  const names = Array.from(document.querySelectorAll('#reports-list .ri-checkbox:checked')).map(cb => cb.dataset.name);
+  if (names.length === 0) return;
+  const msg = '确定删除选中的 ' + names.length + ' 份报告？此操作不可恢复。';
+  if (!await toastConfirm(msg)) return;
+  let okCount = 0, failNames = [];
+  for (const name of names) {
+    try {
+      const res = await fetch('/api/delete_report', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({name: name})
+      });
+      const data = await res.json();
+      if (data.ok) okCount++; else failNames.push(name);
+    } catch(e) { failNames.push(name); }
+  }
+  if (failNames.length === 0) {
+    toastSuccess('已删除 ' + okCount + ' 份报告');
+  } else {
+    toastError('部分删除失败（' + failNames.length + ' 份）');
+  }
+  document.getElementById('select-all-cb').checked = false;
+  loadReports();
 }
 
 // ─── 数据库巡检历史分享 ─────────────────────────────────────
@@ -8275,13 +8393,13 @@ async function executeFixSql(taskId, sql) {
   }
 </style>
 <!-- 登录遮罩 -->
-<div id="login-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;display:flex;align-items:center;justify-content:center;">
+<div id="login-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:12vh;">
   <div style="text-align:center;animation:fadeInUp 0.6s ease;">
     <!-- Logo -->
-    <img src="/dbcheck_logo.png" style="width:80px;height:80px;margin:0 auto 16px;border-radius:18px;box-shadow:0 8px 32px rgba(108,92,231,0.3);" alt="DBCheck">
+    <img src="/dbcheck_logo.png" style="width:80px;height:80px;margin:0 auto 8px;border-radius:18px;box-shadow:0 8px 32px rgba(108,92,231,0.3);" alt="DBCheck">
     <!-- Title -->
     <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:4px;" data-i18n="webui.login_title">DBCheck</div>
-    <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:32px;" data-i18n="webui.login_subtitle">数据库智能巡检工具</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:16px;" data-i18n="webui.login_subtitle">数据库智能巡检工具</div>
     <!-- Form card -->
     <div class="login-card">
       <div style="margin-bottom:14px;">
@@ -10610,6 +10728,79 @@ async function deleteBackupHistory(recordId) {
     }
   }
   </script>
+
+<!-- ─── About Modal ───────────────────────────────────── -->
+<div id="about-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);" onclick="closeAboutModal(event)">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:580px;width:92%;margin:80px auto;padding:36px 32px;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
+      <img src="/dbcheck_logo.png" alt="DBCheck" style="width:44px;height:44px;border-radius:10px;">
+      <div>
+        <h2 style="margin:0;font-size:20px;font-weight:700;color:var(--text);">DBCheck</h2>
+        <span style="font-size:12px;color:var(--text-muted);">Database Intelligent Inspector <span id="about-version">{{ version }}</span></span>
+      </div>
+      <button onclick="closeAboutModal()" style="margin-left:auto;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;">✕</button>
+    </div>
+
+    <div style="font-size:13.5px;line-height:1.8;color:var(--text);margin-bottom:18px;">
+      <p style="margin:0 0 10px;" data-i18n="webui.about_desc">
+        DBCheck 是一款开源数据库智能巡检工具，支持 MySQL、PostgreSQL、Oracle、SQL Server、达梦（DM）、TiDB、IvorySQL 等主流数据库的健康巡检与 AI 诊断。
+      </p>
+      <p style="margin:0;color:var(--text-muted);font-size:12.5px;" data-i18n="webui.about_author">
+        作者：Jack Ge· 开源协议：MIT License · 官网：<a href="https://dbcheck.top" target="_blank" style="color:var(--accent2);">dbcheck.top</a>
+      </p>
+    </div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:18px;">
+      <div style="font-size:13px;font-weight:600;color:var(--warn);margin-bottom:10px;">⚠️ 君子协定（Gentleman's Agreement）</div>
+      <!-- 中文 -->
+      <div class="about-note" lang="zh" style="margin:0;font-size:12.5px;line-height:1.8;color:var(--text-muted);">
+        每年 <strong>5月19日至5月25日</strong>，DBCheck 界面将强制以<strong>灰度模式</strong>显示，且用户无法切换主题。<br/><br/>
+        请尊重这一设计，不要尝试修改或绕过灰度模式。
+      </div>
+      <!-- 英文 -->
+      <div class="about-note" lang="en" style="display:none;margin:0;font-size:12.5px;line-height:1.8;color:var(--text-muted);">
+        Every year from <strong>May 19 to May 25</strong>, the DBCheck interface will be forced to <strong>grayscale mode</strong> and users cannot switch themes.<br/><br/>
+        This restriction is implemented via CSS injection in the <code style="background:var(--surface);padding:1px 5px;border-radius:4px;font-size:12px;">before_request / after_request</code> hooks in <code style="background:var(--surface);padding:1px 5px;border-radius:4px;font-size:12px;">web_ui.py</code>.<br/><br/>
+        Please respect this design and do not attempt to modify or bypass the grayscale mode during this period each year.
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">MySQL</span>
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">PostgreSQL</span>
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">Oracle</span>
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">SQL Server</span>
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">DM 达梦</span>
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">TiDB</span>
+      <span style="display:inline-block;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;font-size:11.5px;color:var(--text-muted);">IvorySQL</span>
+    </div>
+  </div>
+</div>
+
+<script>
+function showAboutModal() {
+  document.getElementById('about-modal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  // 根据当前语言切换君子协定说明的语言
+  var isZh = (document.documentElement.lang === 'zh');
+  var notes = document.getElementsByClassName('about-note');
+  for (var i = 0; i < notes.length; i++) {
+    notes[i].style.display = (notes[i].getAttribute('lang') === (isZh ? 'zh' : 'en')) ? '' : 'none';
+  }
+}
+function closeAboutModal() {
+  document.getElementById('about-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+// 点击 backdrop 关闭
+document.getElementById('about-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeAboutModal();
+});
+// Esc 关闭
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeAboutModal();
+});
+</script>
 
 </body>
 </html>

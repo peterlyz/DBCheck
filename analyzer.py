@@ -1215,6 +1215,13 @@ class HistoryManager:
             return []
         return self._inner.list_instances()
 
+    def delete_instance(self, key: str):
+        """删除指定实例的所有趋势数据"""
+        if self._inner is None:
+            return
+        return self._inner.delete_instance(key)
+
+
 
 
 

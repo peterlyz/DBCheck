@@ -57,6 +57,79 @@ def _tr(s):
     if not s: return ''
     return _I18N_MAP.get(s, s)
 
+def _parse_report_filename(name: str):
+    """从报告文件名提取 db_type, host, label"""
+    mapping = [
+        ('MySQL巡检报告_', 'mysql'),
+        ('PostgreSQL巡检报告_', 'postgresql'),
+        ('Oracle巡检报告_', 'oracle'),
+        ('DM8巡检报告_', 'dm'),
+        ('达梦巡检报告_', 'dm'),
+        ('SQLServer巡检报告_', 'sqlserver'),
+        ('TiDB巡检报告_', 'tidb'),
+        ('IvorySQL巡检报告_', 'ivorysql'),
+    ]
+    name_no_ext = name.replace('.docx', '')
+    for prefix, db_type in mapping:
+        if name.startswith(prefix):
+            rest = name_no_ext[len(prefix):]  # e.g. "192.168.42.220_ORACLE19_20260517212935"
+            # ts 是末尾14位数字
+            parts = rest.rsplit('_', 1)
+            if len(parts) == 2 and len(parts[1]) == 14 and parts[1].isdigit():
+                middle = parts[0]  # "192.168.42.220_ORACLE19"
+                sub = middle.split('_', 1)
+                host = sub[0]
+                label = sub[1] if len(sub) > 1 else ''
+                return db_type, host, label
+            # 无法解析 ts，至少返回 host
+            idx = rest.find('_')
+            if idx > 0:
+                host = rest[:idx]
+                return db_type, host, ''
+            return db_type, '', ''
+    return '', '', ''
+
+
+def _sync_delete_trend_for_report(filename: str):
+    """删除报告时同步删除对应的趋势数据（若无剩余报告）"""
+    try:
+        from analyzer import HistoryManager
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        hm = HistoryManager(script_dir)
+        reports_dir = os.path.join(script_dir, 'reports')
+
+        db_type, host, label = _parse_report_filename(filename)
+        if not db_type or not host:
+            return
+
+        # 查找匹配的实例
+        instances = hm.list_instances()
+        matched = []
+        for inst in instances:
+            if inst.get('db_type') == db_type and inst.get('host') == host:
+                if not label or inst.get('label') == label:
+                    matched.append(inst)
+        if not matched:
+            return
+
+        # 检查该实例是否还有剩余报告
+        for inst in matched:
+            inst_key = inst.get('key', '')
+            inst_label = inst.get('label', '')
+            has_report = False
+            if os.path.isdir(reports_dir):
+                for f in os.listdir(reports_dir):
+                    if f.endswith('.docx') and not f.startswith('~$'):
+                        dt, h, lb = _parse_report_filename(f)
+                        if dt == db_type and h == host:
+                            if not inst_label or lb == inst_label:
+                                has_report = True
+                                break
+            if not has_report:
+                hm.delete_instance(inst_key)
+    except Exception:
+        pass
+
 # async_mode='threading' 最稳定，跨平台/打包零兼容问题，
 # 满足 DBCheck Web UI 低并发使用场景（单用户/少量连接）。
 # 不依赖 gevent/eventlet，避免打包后版本冲突。
@@ -71,6 +144,38 @@ except ImportError:
 app = Flask(__name__, template_folder='web_templates', static_folder='web_templates', static_url_path='/')
 app.config['SECRET_KEY'] = os.urandom(24)
 socketio.init_app(app)
+
+# ── 纪念日灰度模式（5月19-25日，不可调整）───────────────────────
+@app.before_request
+def _enforce_grayscale():
+    """每年 5月19-25 日，强制所有响应带 grayscale filter"""
+    import datetime as _dt
+    now = _dt.datetime.now()
+    g = now.month == 5 and 19 <= now.day <= 25
+    from flask import g as _flask_g
+    _flask_g._grayscale = g
+
+
+@app.after_request
+def _inject_grayscale(response):
+    from flask import g as _flask_g
+    if not getattr(_flask_g, '_grayscale', False):
+        return response
+    if 'text/html' not in response.content_type:
+        return response
+    body = response.get_data(as_text=True)
+    inject_css = '''
+<style id="grayscale-enforce">
+  /* 纪念日灰度模式（5月19-25日），不可调整 */
+  body { filter: grayscale(100%) !important; }
+  button[onclick*="toggleTheme"] { pointer-events: none !important; opacity: 0.5 !important; }
+</style>
+'''
+    if '</head>' in body:
+        body = body.replace('</head>', inject_css + '\n</head>', 1)
+    response.set_data(body)
+    response.headers['Content-Length'] = len(response.get_data())
+    return response
 
 # ── REST API v1 ─────────────────────────────────────────────
 from api_v1 import api_v1, _ADMIN_TOKEN
@@ -2006,31 +2111,59 @@ def api_delete_report():
         if not os.path.isfile(fp):
             return jsonify({'ok': False, 'error': _t('webui.reports_file_not_found')}), 404
         os.remove(fp)
+        # 数据库巡检报告 → 同步删除 history.db 趋势数据
+        if not name.startswith('服务器巡检_'):
+            try:
+                _sync_delete_trend_for_report(name)
+            except Exception:
+                pass
+        # 服务器巡检报告 → 同步删除 server_inspection_history 记录
+        else:
+            try:
+                from server_inspect import delete_server_inspection_by_filename
+                delete_server_inspection_by_filename(name)
+            except Exception:
+                pass
         return jsonify({'ok': True})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 @app.route('/api/history_instances', methods=['GET'])
 def api_history_instances():
-    """返回所有有历史记录的数据库实例列表"""
+    """返回有报告文件的数据库实例列表"""
     try:
         from analyzer import HistoryManager
         script_dir = os.path.dirname(os.path.abspath(__file__))
+        reports_dir = os.path.join(script_dir, 'reports')
         hm = HistoryManager(script_dir)
         raw_instances = hm.list_instances()
         instances = []
+
+        # 预构建：收集所有报告文件的 (db_type, host) 集合
+        keep = set()
+        if os.path.isdir(reports_dir):
+            for f in os.listdir(reports_dir):
+                if f.endswith('.docx') and not f.startswith('~$'):
+                    dt, h, _lb = _parse_report_filename(f)
+                    if dt and h:
+                        keep.add((dt, h))
+
         for inst in raw_instances:
-            instances.append({
-                'key': inst.get('key', ''),
-                'db_type': inst.get('db_type', ''),
-                'host': inst.get('host', ''),
-                'port': str(inst.get('port', '')),
-                'label': inst.get('label', inst.get('key', '')),
-                'snapshot_count': inst.get('snapshots_count', 0),
-                'last_time': inst.get('last_time', ''),
-                'last_health': inst.get('last_health', _t('webui.health_unknown')),
-                'last_risk': inst.get('last_risk', 0),
-            })
+            inst_db_type = inst.get('db_type', '')
+            inst_host = inst.get('host', '')
+            # 只保留有报告文件的实例
+            if (inst_db_type, inst_host) in keep:
+                instances.append({
+                    'key': inst.get('key', ''),
+                    'db_type': inst.get('db_type', ''),
+                    'host': inst.get('host', ''),
+                    'port': str(inst.get('port', '')),
+                    'label': inst.get('label', inst.get('key', '')),
+                    'snapshot_count': inst.get('snapshots_count', 0),
+                    'last_time': inst.get('last_time', ''),
+                    'last_health': inst.get('last_health', _t('webui.health_unknown')),
+                    'last_risk': inst.get('last_risk', 0),
+                })
         return jsonify({'ok': True, 'instances': instances})
     except Exception as e:
         return jsonify({'ok': False, 'instances': [], 'error': str(e)})

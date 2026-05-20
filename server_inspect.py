@@ -1066,18 +1066,43 @@ def get_server_inspection_detail(record_id):
 
 
 def delete_server_inspection(record_id):
-    """删除指定巡检历史记录"""
+    """删除指定巡检历史记录，同时删除对应的报告文件"""
     _init_history_db()
     db_path = _get_history_db_path()
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+    # 先查 report_path
+    cursor.execute("SELECT report_path FROM server_inspection_history WHERE id = ?", (record_id,))
+    row = cursor.fetchone()
+    report_path = row[0] if row and row[0] else ''
+    # 删除 DB 记录
     cursor.execute("DELETE FROM server_inspection_history WHERE id = ?", (record_id,))
     deleted = cursor.rowcount
     conn.commit()
     conn.close()
+    # 同步删除报告文件
+    if deleted and report_path and os.path.isfile(report_path):
+        try:
+            os.remove(report_path)
+        except Exception:
+            pass
     return deleted > 0
 
 
+
+
+
+def delete_server_inspection_by_filename(filename):
+    """按报告文件名删除对应的巡检历史记录"""
+    _init_history_db()
+    db_path = _get_history_db_path()
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM server_inspection_history WHERE report_path LIKE ?", (f'%{filename}',))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted > 0
 # ─── 分享链接功能 ──────────────────────────────────────────────────
 
 def _init_shares_db():
