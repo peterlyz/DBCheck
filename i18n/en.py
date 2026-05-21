@@ -705,6 +705,13 @@ EN = {
     "report.pg_ch61": "Database Users",
     "report.pg_ch7": "Risk and Recommendations",
     "report.pg_ch8": "AI Intelligent Diagnosis",
+    # PG Enhanced Health Check chapter (added 2026-05-21)
+    "report.pg_ch9": "PostgreSQL Enhanced Health Check",
+    "report.pg_ch91": "Tablespace Usage",
+    "report.pg_ch92": "WAL Status & Archive Progress",
+    "report.pg_ch93": "Database Age (xid Wraparound Risk)",
+    "report.pg_ch94": "pg_stat_statements Status",
+    "report.pg_ch95": "Invalid Indexes Check",
     # Table Headers
     "report.pg_hdr_config_item": "Configuration Item",
     "report.pg_hdr_current_value": "Current Value",
@@ -985,6 +992,11 @@ EN = {
     "report.dm_ch16_1": "17.1 Issue Details",
     "report.dm_ch16_2": "17.2 Remediation SQL",
     "report.dm_ch17": "18. AI Diagnosis Recommendations",
+    # DM8 Enhanced Health Check (2026-05-21 P0)
+    "report.dm_ch18": "Chapter 16 Enhanced Health Check",
+    "report.dm_ch18_1": "16.1 Invalid Indexes Check",
+    "report.dm_ch18_2": "16.2 Archive Status",
+    "report.dm_ch18_3": "16.3 Backup Status",
     "report.dm_notes_chapter": "19. Report Notes",
     "report.dm_notes_chapter_ai": "19. Report Notes",
     "report.dm_fallback_notes_chapter": "18. Report Notes",
@@ -2424,4 +2436,13 @@ EN = {
     "webui.about_desc": "DBCheck is an open-source intelligent database inspection tool that supports health inspection and AI diagnostics for MySQL, PostgreSQL, Oracle, SQL Server, DM, TiDB, IvorySQL and other mainstream databases.",
     "webui.about_author": "Author: Jack Ge · License: MIT · Website: dbcheck.top",
     "webui.about_grayscale_note": "Every year from <strong>May 19 to May 25</strong>, the DBCheck interface will be forced to <strong>grayscale mode</strong> and users cannot switch themes.<br/><br/>Please respect this design and do not attempt to modify or bypass the grayscale mode.",
+
+    # PG High-priority check items (2026-05-21)
+    "report.pg_issue_tablespace_large": "Tablespace too large",
+    "report.pg_issue_wal_lag": "WAL replication lag",
+    "report.pg_issue_xid_age_high": "Transaction ID age too high",
+    "report.pg_issue_xid_age_mid": "Transaction ID age elevated",
+    "report.pg_issue_pg_stat_statements_off": "pg_stat_statements not installed",
+    "report.pg_issue_invalid_indexes": "Invalid indexes exist",
+
 }

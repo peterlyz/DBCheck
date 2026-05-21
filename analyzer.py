@@ -465,7 +465,6 @@ def smart_analyze_mysql(context: dict) -> list:
             issues.extend(plugin_issues)
     except Exception:
         pass
-
     # ── 插件规则检查（Pro 版）──────────────────────────────
     try:
         from pro.rule_engine import analyze_with_plugins
@@ -629,6 +628,88 @@ def smart_analyze_pg(context: dict) -> list:
             'col4': 'report.pg_fallback_priority_high', 'col5': 'report.pg_fallback_owner_dba',
             'fix_sql': "-- 查看长事务详情：\nSELECT pid, now()-xact_start AS duration, state, query FROM pg_stat_activity WHERE xact_start IS NOT NULL AND state != 'idle' ORDER BY duration DESC;\n-- 终止(谨慎): SELECT pg_terminate_backend(pid);"
         })
+    # ── 6. 表空间使用率 ──────────────────────────────────
+    pg_ts = context.get('pg_tablespace_size', [])
+    for ts in pg_ts:
+        ts_name = ts.get('tablespace_name', '?')
+        size_bytes = _int(ts.get('size_bytes', 0))
+        size_pretty = ts.get('size_pretty', '?')
+        if size_bytes > 100 * 1024 * 1024 * 1024:  # 100GB
+            issues.append({
+                'col1': f'表空间 {ts_name} 较大', 'col2': 'report.risk_suggest',
+                'col3': f'表空间 {ts_name} 大小 {size_pretty}，建议定期清理或归档历史数据',
+                'col4': 'report.pg_fallback_priority_low', 'col5': 'report.pg_fallback_owner_dba',
+                'fix_sql': f"-- 查看表空间 {ts_name} 下的大对象：\nSELECT schemaname, tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size\nFROM pg_tables WHERE tablespace = '{ts_name}'\nORDER BY 3 DESC;"
+            })
+
+    # ── 7. WAL 状态与归档进度 ───────────────────────────
+    wal_status = context.get('pg_wal_status', [])
+    if wal_status and wal_status[0]:
+        ws = wal_status[0]
+        is_recovery = ws.get('is_in_recovery', False)
+        current_lsn = ws.get('current_wal_lsn', '')
+        if not is_recovery:
+            issues.append({
+                'col1': 'WAL 状态（主库）', 'col2': 'report.risk_suggest',
+                'col3': f'当前 WAL LSN：{current_lsn}',
+                'col4': 'report.pg_fallback_priority_low', 'col5': 'report.pg_fallback_owner_dba',
+                'fix_sql': "-- 查看 WAL 状态：\nSELECT pg_current_wal_lsn(), pg_switch_wal();"
+            })
+        else:
+            last_received = ws.get('last_received', '')
+            last_replayed = ws.get('last_replayed', '')
+            issues.append({
+                'col1': 'WAL 复制状态（备库）', 'col2': 'report.risk_suggest',
+                'col3': f'备库 WAL 接收：{last_received}，回放：{last_replayed}',
+                'col4': 'report.pg_fallback_priority_low', 'col5': 'report.pg_fallback_owner_dba',
+                'fix_sql': "-- 查看复制状态：\nSELECT * FROM pg_stat_replication;"
+            })
+
+    # ── 8. 数据库年龄（xid 回卷风险）───────────────────
+    pg_age = context.get('pg_database_age', [])
+    for db in pg_age:
+        age = _int(db.get('age', 0))
+        datname = db.get('datname', '?')
+        if age > 1500000000:
+            issues.append({
+                'col1': 'report.pg_issue_xid_age_high', 'col2': 'report.risk_high',
+                'col3': f'数据库 {datname} 事务 ID 年龄 {age}（> 15 亿），存在回卷风险！需立即执行 VACUUM FREEZE',
+                'col4': 'report.pg_fallback_priority_high', 'col5': 'report.pg_fallback_owner_dba',
+                'fix_sql': "-- 立即执行 VACUUM FREEZE：\nVACUUM FREEZE;"
+            })
+        elif age > 500000000:
+            issues.append({
+                'col1': 'report.pg_issue_xid_age_mid', 'col2': 'report.risk_mid',
+                'col3': f'数据库 {datname} 事务 ID 年龄 {age}（> 5 亿），建议关注',
+                'col4': 'report.pg_fallback_priority_mid', 'col5': 'report.pg_fallback_owner_dba',
+                'fix_sql': "-- 建议执行 VACUUM：\nVACUUM;"
+            })
+
+    # ── 9. pg_stat_statements 启用状态检查 ────────────────
+    pgs_stats = context.get('pg_stat_statements_status', [])
+    if pgs_stats:
+        preload_ok = any('pg_stat_statements' in str(row.get('setting', '')) for row in pgs_stats if row.get('name') == 'shared_preload_libraries')
+        ext_ok = any(row.get('setting') == 'installed' for row in pgs_stats if row.get('name') == 'pg_stat_statements')
+        if not preload_ok or not ext_ok:
+            issues.append({
+                'col1': 'report.pg_issue_pg_stat_statements_off', 'col2': 'report.risk_suggest',
+                'col3': f'pg_stat_statements 未正确配置（shared_preload 包含: {preload_ok}, 扩展安装: {ext_ok}），无法使用慢查询分析',
+                'col4': 'report.pg_fallback_priority_low', 'col5': 'report.pg_fallback_owner_dba',
+                'fix_sql': "-- 1. 修改 postgresql.conf：\n-- shared_preload_libraries = pg_stat_statements\n-- 2. 重启 PostgreSQL\n-- 3. 执行：CREATE EXTENSION pg_stat_statements;"
+            })
+
+    # ── 10. 无效索引检查 ────────────────────────────────
+    invalid_idx = context.get('pg_invalid_indexes', [])
+    if invalid_idx:
+        idx_list = ', '.join([str(row.get('schemaname','?')) + '.' + str(row.get('indexname','?')) for row in invalid_idx[:5]])
+        issues.append({
+            'col1': 'report.pg_issue_invalid_indexes', 'col2': 'report.risk_high',
+            'col3': f'发现 {len(invalid_idx)} 个无效索引（indisvalid=false），影响查询计划。示例：{idx_list}',
+            'col4': 'report.pg_fallback_priority_high', 'col5': 'report.pg_fallback_owner_dba',
+            'fix_sql': "-- 查看无效索引：\nSELECT schemaname, relname FROM pg_index JOIN pg_class ON pg_class.oid = pg_index.indexrelid WHERE NOT indisvalid;\n-- 重建索引：\nREINDEX INDEX schema.idxname;"
+        })
+
+
     pg_users = context.get('pg_users', [])
     superusers = [u for u in pg_users if str(u.get('superuser', '')).upper() in ('T', 'TRUE', 'YES', '1')]
     if len(superusers) > 2:
@@ -1837,6 +1918,76 @@ def smart_analyze_dm(context: dict) -> list:
                     'fix_sql': f"-- 查询事务详情: SELECT * FROM V$TRX WHERE ID={trx_id};\n"
                                f"-- 必要时联系用户提交或回滚事务"
                 })
+
+    # ── 5. 无效索引检查 ──────────────────────────
+    invalid_idx = context.get("dm_invalid_indexes", [])
+    for idx in invalid_idx:
+        if not isinstance(idx, dict):
+            continue
+        owner = idx.get('OWNER', '')
+        idx_name = idx.get('INDEX_NAME', '')
+        tbl_name = idx.get('TABLE_NAME', '')
+        status = idx.get('STATUS', '')
+        issues.append({
+            'col1': f"无效索引 - {owner}.{idx_name}",
+            'col2': '中风险',
+            'col3': f"索引 {owner}.{idx_name}（表 {tbl_name}）状态为 {status}，可能导致查询性能下降或执行计划异常",
+            'col4': '中',
+            'col5': 'DBA',
+            'fix_sql': f"-- 重建索引:\nALTER INDEX {owner}.{idx_name} REBUILD;"
+        })
+
+    # ── 6. 归档状态检查 ────────────────────────────
+    arch_config = context.get("dm_arch_config", [])
+    arch_enabled = False
+    for ac in (arch_config or []):
+        if not isinstance(ac, dict):
+            continue
+        if str(ac.get('NAME')).upper() == 'ARCH_MODE' and str(ac.get('VALUE')).upper() == 'Y':
+            arch_enabled = True
+            break
+    if not arch_enabled:
+        issues.append({
+            'col1': '归档未启用',
+            'col2': '高风险',
+            'col3': '数据库未启用归档模式，一旦发生介质故障将无法恢复到任意时间点，只能恢复到最近一次全量备份',
+            'col4': '高',
+            'col5': 'DBA',
+            'fix_sql': "-- 启用归档（需要重启）:\n-- 1. 配置 dm.ini 中 ARCH_INI=1 并设置归档路径\n-- 2. 将数据库切换到 MOUNT 状态\n-- 3. ALTER DATABASE ARCHIVELOG;\n-- 4. ALTER DATABASE OPEN;"
+        })
+
+    # ── 7. 备份状态检查 ────────────────────────────
+    backup_info = context.get("dm_backup", [])
+    if not backup_info or not isinstance(backup_info, list) or len(backup_info) == 0:
+        issues.append({
+            'col1': '未找到备份记录',
+            'col2': '高风险',
+            'col3': '数据库中未找到任何备份记录，数据面临严重风险，请立即执行全量备份',
+            'col4': '高',
+            'col5': 'DBA',
+            'fix_sql': "-- 立即执行全量备份:\nBACKUP DATABASE FULL TO 'BACKUP_001' BACKUPSET '/dm/backup/full';"
+        })
+    else:
+        # 取最近一次备份，检查是否超过 7 天
+        last_backup = backup_info[0] if backup_info else {}
+        backup_time_str = str(last_backup.get('BACKUP_TIME', '')) if isinstance(last_backup, dict) else ''
+        if backup_time_str and backup_time_str not in ('None', ''):
+            try:
+                from datetime import datetime, timedelta
+                # DM8 BACKUP_TIME 格式：YYYY-MM-DD HH:MI:SS
+                bt = datetime.strptime(backup_time_str[:19], '%Y-%m-%d %H:%M:%S')
+                days_ago = (datetime.now() - bt).days
+                if days_ago > 7:
+                    issues.append({
+                        'col1': '备份过期',
+                        'col2': '中风险',
+                        'col3': f"最近一次备份时间为 {backup_time_str}，距今已 {days_ago} 天，建议每天执行一次全量或增量备份",
+                        'col4': '中',
+                        'col5': 'DBA',
+                        'fix_sql': f"-- 执行增量备份:\nBACKUP DATABASE INCREMENT TO 'INC_{days_ago}' BACKUPSET '/dm/backup/inc';"
+                    })
+            except Exception:
+                pass
 
     return issues
 

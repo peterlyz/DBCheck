@@ -169,6 +169,9 @@ dm_top_sql_cpu    = SELECT SQL_TEXT, EXEC_TIME, N_RUNS, SESS_ID FROM V$LONG_EXEC
 
 # ── 23. Undo 信息 ───────────────────────────
 dm_undo_info      = SELECT NAME AS TABLESPACE_NAME, TYPE$ AS TABLESPACE_TYPE, STATUS$ AS TS_STATUS FROM V$TABLESPACE;
+
+# ── 24. 无效索引检查 ───────────────────────────
+dm_invalid_indexes = SELECT OWNER, INDEX_NAME, TABLE_NAME, STATUS FROM DBA_INDEXES WHERE STATUS != 'VALID' AND OWNER NOT IN ('SYS', 'SYSTEM') ORDER BY OWNER, TABLE_NAME;
 """
 
 
@@ -906,8 +909,9 @@ class getData(object):
             "dm_tablespace", "dm_temp_ts",
             "dm_sga", "dm_memory_info", "dm_pga",
             "dm_redo_logs", "dm_redo_curr",
-            "dm_archive_config", "dm_archive_lag",
+            "dm_arch_config", "dm_archive_lag",
             "dm_backup",
+            "dm_invalid_indexes",
             "dm_params",
             "dm_invalid_objs", "dm_invalid_cnt",
             "dm_users", "dm_sys_privs", "dm_default_pws",
@@ -2080,6 +2084,18 @@ class saveDoc(object):
                 if not missing and not redundant and not unused:
                     doc.add_paragraph(self._t('report.index_health_no_issues'))
                 doc.add_paragraph()
+
+            # 第16章 增强健康检查（P0 2026-05-21）
+            _add_heading(self._t("report.dm_ch18"))
+            # 16.1 无效索引检查
+            _add_heading(self._t("report.dm_ch18_1"), 2)
+            _render('dm_invalid_indexes', 50)
+            # 16.2 归档状态
+            _add_heading(self._t("report.dm_ch18_2"), 2)
+            _render('dm_arch_config', 10)
+            # 16.3 备份状态
+            _add_heading(self._t("report.dm_ch18_3"), 2)
+            _render('dm_backup', 10)
 
             self._append_chapters(doc)
             doc.save(self.ofile)

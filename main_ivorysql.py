@@ -249,6 +249,11 @@ pg_lock_type_stats = SELECT locktype, mode, granted, COUNT(*) AS count FROM pg_l
 ivorysql_compat_mode = SELECT name, setting, short_desc FROM pg_settings WHERE name LIKE 'ivorysql.%' OR name LIKE 'compatible%%' ORDER BY name;
 ivorysql_plsql_objects = SELECT CASE WHEN pronamespace IN (SELECT oid FROM pg_namespace WHERE nspname = 'pg_catalog') THEN 'system' ELSE 'user' END AS scope, CASE WHEN prokind = 'f' THEN 'function' WHEN prokind = 'p' THEN 'procedure' WHEN prokind = 'a' THEN 'aggregate' WHEN prokind = 'w' THEN 'window' ELSE 'other' END AS type, count(*) AS count FROM pg_proc GROUP BY scope, type ORDER BY scope, type;
 ivorysql_sequences = SELECT sequencename, sequenceowner, data_type, start_value, min_value, max_value, increment_by, cycle, cache_size FROM pg_sequences LIMIT 20;
+pg_tablespace_size = SELECT spcname AS tablespace_name, pg_tablespace_size(oid) AS size_bytes, pg_size_pretty(pg_tablespace_size(oid)) AS size_pretty FROM pg_tablespace ORDER BY size_bytes DESC;
+pg_wal_status = SELECT pg_is_in_recovery() AS is_in_recovery, pg_current_wal_lsn() AS current_wal_lsn, pg_last_wal_receive_lsn() AS last_received, pg_last_wal_replay_lsn() AS last_replayed, pg_last_xact_replay_timestamp() AS last_replay_time;
+pg_database_age = SELECT datname, age(datfrozenxid) AS age, datfrozenxid FROM pg_database WHERE datistemplate = false ORDER BY age DESC;
+pg_stat_statements_status = SELECT name, setting FROM pg_settings WHERE name = 'shared_preload_libraries' UNION SELECT 'pg_stat_statements' AS name, CASE WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements') THEN 'installed' ELSE 'not installed' END AS setting;
+pg_invalid_indexes = SELECT n.nspname AS schemaname, c.relname AS indexname, i.indrelid::regclass AS tablename FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT i.indisvalid ORDER BY n.nspname, c.relname;
 """
 
 

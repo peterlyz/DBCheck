@@ -244,6 +244,11 @@ pg_blocking_chain = SELECT blocked_locks.pid AS blocked_pid, blocked_activity.us
 pg_deadlock_count = SELECT datname, deadlocks FROM pg_stat_database WHERE deadlocks > 0 ORDER BY deadlocks DESC;
 pg_long_xact      = SELECT pid, usename, datname, application_name, state, xact_start, EXTRACT(EPOCH FROM (now() - xact_start)) AS xact_seconds, left(query, 200) AS query FROM pg_stat_activity WHERE xact_start IS NOT NULL AND EXTRACT(EPOCH FROM (now() - xact_start)) > 60 AND state != 'idle' ORDER BY xact_start;
 pg_lock_type_stats = SELECT locktype, mode, granted, COUNT(*) AS count FROM pg_locks GROUP BY locktype, mode, granted ORDER BY count DESC;
+pg_tablespace_size = SELECT spcname AS tablespace_name, pg_tablespace_size(oid) AS size_bytes, pg_size_pretty(pg_tablespace_size(oid)) AS size_pretty FROM pg_tablespace ORDER BY size_bytes DESC;
+pg_wal_status = SELECT pg_is_in_recovery() AS is_in_recovery, pg_current_wal_lsn() AS current_wal_lsn, pg_last_wal_receive_lsn() AS last_received, pg_last_wal_replay_lsn() AS last_replayed, pg_last_xact_replay_timestamp() AS last_replay_time;
+pg_database_age = SELECT datname, age(datfrozenxid) AS age, datfrozenxid FROM pg_database WHERE datistemplate = false ORDER BY age DESC;
+pg_stat_statements_status = SELECT name, setting FROM pg_settings WHERE name = 'shared_preload_libraries' UNION SELECT 'pg_stat_statements' AS name, CASE WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements') THEN 'installed' ELSE 'not installed' END AS setting;
+pg_invalid_indexes = SELECT n.nspname AS schemaname, c.relname AS indexname, i.indrelid::regclass AS tablename FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_namespace n ON n.oid = c.relnamespace WHERE NOT i.indisvalid ORDER BY n.nspname, c.relname;
 """
 
 
@@ -738,6 +743,7 @@ class WordTemplateGenerator:
             'ch9':             self._t('report.config_baseline_chapter'),
             'ch10':            self._t('report.index_health_chapter'),
             'ch11':            self._t('report.fallback_pg_notes_chapter'),
+            'ch12':            self._t('report.pg_ch9'),
             # Table headers
             'hdr_config':      self._t('report.pg_hdr_config_item'),
             'hdr_cur_val':     self._t('report.pg_hdr_current_value'),
@@ -879,6 +885,7 @@ class WordTemplateGenerator:
         self._add_ai_section()
         self._add_config_baseline_section()
         self._add_index_health_section()
+        self._add_pg_health_section()
         self._add_notes_section()
         return self.doc
 
@@ -1448,14 +1455,147 @@ class WordTemplateGenerator:
                     for r in p.runs:
                         r.font.size = Pt(10)
                     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    def _add_pg_health_section(self):
+        """
+        生成第 9 章「PostgreSQL 增强健康检查」。
+
+        包含 5 个小节：
+        9.1 表空间使用率
+        9.2 WAL 状态与归档进度
+        9.3 数据库年龄（xid 回卷风险）
+        9.4 pg_stat_statements 状态
+        9.5 无效索引检查
+        """
+        heading = self.doc.add_heading('9. ' + self._l['ch9'], level=1)
+        heading_run = heading.runs[0]
+        heading_run.font.size = Pt(14)
+        heading_run.font.bold = True
+
+        #         ---- 12.1 表空间使用率 ----
+        sub = self.doc.add_heading('12.1 ' + self._t('report.pg_ch91'), level=2)
+        sub.runs[0].font.size = Pt(12)
+        sub.runs[0].font.bold = True
+        table = self.doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        table.autofit = True
+        hdr = table.rows[0].cells
+        self._style_header_cell(hdr[0], self._t('report.pg_hdr_tablespace') if hasattr(self, '_t') else 'Tablespace')
+        self._style_header_cell(hdr[1], self._t('report.pg_hdr_size_bytes') if hasattr(self, '_t') else 'Size (Bytes)')
+        self._style_header_cell(hdr[2], 'Size (Pretty)')
+        for i in range(10):
+            rc = table.add_row().cells
+            rc[0].text = "{{{{ pg_tablespace_size[{}].tablespace_name if pg_tablespace_size and pg_tablespace_size[{}] else '' }}}}".format(i, i)
+            rc[1].text = "{{{{ pg_tablespace_size[{}].size_bytes if pg_tablespace_size and pg_tablespace_size[{}] else '' }}}}".format(i, i)
+            rc[2].text = "{{{{ pg_tablespace_size[{}].size_pretty if pg_tablespace_size and pg_tablespace_size[{}] else '' }}}}".format(i, i)
+            for c in rc:
+                for p in c.paragraphs:
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.doc.add_paragraph()
+
+        # ---- 12.2 WAL 状态 ----
+        sub = self.doc.add_heading('12.2 ' + self._t('report.pg_ch92'), level=2)
+        sub.runs[0].font.size = Pt(12)
+        sub.runs[0].font.bold = True
+        table = self.doc.add_table(rows=1, cols=5)
+        table.style = 'Table Grid'
+        table.autofit = True
+        hdr = table.rows[0].cells
+        self._style_header_cell(hdr[0], 'Is Recovery')
+        self._style_header_cell(hdr[1], 'Current WAL LSN')
+        self._style_header_cell(hdr[2], 'Last Received')
+        self._style_header_cell(hdr[3], 'Last Replayed')
+        self._style_header_cell(hdr[4], 'Last Replay Time')
+        for i in range(2):
+            rc = table.add_row().cells
+            rc[0].text = "{{{{ pg_wal_status[{}].is_in_recovery if pg_wal_status and pg_wal_status[{}] else '' }}}}".format(i, i)
+            rc[1].text = "{{{{ pg_wal_status[{}].current_wal_lsn if pg_wal_status and pg_wal_status[{}] else '' }}}}".format(i, i)
+            rc[2].text = "{{{{ pg_wal_status[{}].last_received if pg_wal_status and pg_wal_status[{}] else '' }}}}".format(i, i)
+            rc[3].text = "{{{{ pg_wal_status[{}].last_replayed if pg_wal_status and pg_wal_status[{}] else '' }}}}".format(i, i)
+            rc[4].text = "{{{{ pg_wal_status[{}].last_replay_time if pg_wal_status and pg_wal_status[{}] else '' }}}}".format(i, i)
+            for c in rc:
+                for p in c.paragraphs:
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.doc.add_paragraph()
+
+        # ---- 12.3 数据库年龄 ----
+        sub = self.doc.add_heading('12.3 ' + self._t('report.pg_ch93'), level=2)
+        sub.runs[0].font.size = Pt(12)
+        sub.runs[0].font.bold = True
+        table = self.doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        table.autofit = True
+        hdr = table.rows[0].cells
+        self._style_header_cell(hdr[0], 'Database')
+        self._style_header_cell(hdr[1], 'Age')
+        self._style_header_cell(hdr[2], 'Frozen XID')
+        for i in range(10):
+            rc = table.add_row().cells
+            rc[0].text = "{{{{ pg_database_age[{}].datname if pg_database_age and pg_database_age[{}] else '' }}}}".format(i, i)
+            rc[1].text = "{{{{ pg_database_age[{}].age if pg_database_age and pg_database_age[{}] else '' }}}}".format(i, i)
+            rc[2].text = "{{{{ pg_database_age[{}].datfrozenxid if pg_database_age and pg_database_age[{}] else '' }}}}".format(i, i)
+            for c in rc:
+                for p in c.paragraphs:
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.doc.add_paragraph()
+
+        # ---- 12.4 pg_stat_statements 状态 ----
+        sub = self.doc.add_heading('12.4 ' + self._t('report.pg_ch94'), level=2)
+        sub.runs[0].font.size = Pt(12)
+        sub.runs[0].font.bold = True
+        table = self.doc.add_table(rows=1, cols=2)
+        table.style = 'Table Grid'
+        table.autofit = True
+        hdr = table.rows[0].cells
+        self._style_header_cell(hdr[0], 'Name')
+        self._style_header_cell(hdr[1], 'Setting')
+        for i in range(5):
+            rc = table.add_row().cells
+            rc[0].text = "{{{{ pg_stat_statements_status[{}].name if pg_stat_statements_status and pg_stat_statements_status[{}] else '' }}}}".format(i, i)
+            rc[1].text = "{{{{ pg_stat_statements_status[{}].setting if pg_stat_statements_status and pg_stat_statements_status[{}] else '' }}}}".format(i, i)
+            for c in rc:
+                for p in c.paragraphs:
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.doc.add_paragraph()
+
+        # ---- 12.5 无效索引 ----
+        sub = self.doc.add_heading('12.5 ' + self._t('report.pg_ch95'), level=2)
+        sub.runs[0].font.size = Pt(12)
+        sub.runs[0].font.bold = True
+        table = self.doc.add_table(rows=1, cols=3)
+        table.style = 'Table Grid'
+        table.autofit = True
+        hdr = table.rows[0].cells
+        self._style_header_cell(hdr[0], 'Schema')
+        self._style_header_cell(hdr[1], 'Index Name')
+        self._style_header_cell(hdr[2], 'Table')
+        for i in range(10):
+            rc = table.add_row().cells
+            rc[0].text = "{{{{ pg_invalid_indexes[{}].schemaname if pg_invalid_indexes and pg_invalid_indexes[{}] else '' }}}}".format(i, i)
+            rc[1].text = "{{{{ pg_invalid_indexes[{}].indexname if pg_invalid_indexes and pg_invalid_indexes[{}] else '' }}}}".format(i, i)
+            rc[2].text = "{{{{ pg_invalid_indexes[{}].tablename if pg_invalid_indexes and pg_invalid_indexes[{}] else '' }}}}".format(i, i)
+            for c in rc:
+                for p in c.paragraphs:
+                    for r in p.runs:
+                        r.font.size = Pt(10)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.doc.add_paragraph()
+
     def _add_notes_section(self):
         """
-        生成第 11 章「报告说明」。
+        生成第 13 章「报告说明」。
 
         以段落形式输出 5 条固定说明文字，包含：
         报告生成说明、空白项说明、磁盘信息范围说明、巡检结果免责说明、定期巡检建议。
         """
-        heading = self.doc.add_heading('11. ' + self._t('report.fallback_pg_notes_chapter'), level=1)
+        heading = self.doc.add_heading('13. ' + self._t('report.fallback_pg_notes_chapter'), level=1)
         heading_run = heading.runs[0]
         heading_run.font.size = Pt(14)
         heading_run.font.bold = True

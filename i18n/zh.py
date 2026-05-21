@@ -734,6 +734,13 @@ ZI = {
     "report.pg_ch61": "数据库用户信息",
     "report.pg_ch7": "风险与建议",
     "report.pg_ch8": "AI 智能诊断建议",
+    # PG 增强健康检查章节（2026-05-21 新增）
+    "report.pg_ch9": "PostgreSQL 增强健康检查",
+    "report.pg_ch91": "表空间使用率",
+    "report.pg_ch92": "WAL 状态与归档进度",
+    "report.pg_ch93": "数据库年龄（xid 回卷风险）",
+    "report.pg_ch94": "pg_stat_statements 状态",
+    "report.pg_ch95": "无效索引检查",
     # 表头
     "report.pg_hdr_config_item": "配置项",
     "report.pg_hdr_current_value": "当前值",
@@ -960,6 +967,11 @@ ZI = {
     "report.dm_ch16_1": "17.1 问题明细",
     "report.dm_ch16_2": "17.2 修复SQL速查",
     "report.dm_ch17": "第18章 AI 诊断建议",
+    # DM8 增强健康检查（2026-05-21 P0）
+    "report.dm_ch18": "第16章 增强健康检查",
+    "report.dm_ch18_1": "16.1 无效索引检查",
+    "report.dm_ch18_2": "16.2 归档状态",
+    "report.dm_ch18_3": "16.3 备份状态",
     "report.dm_notes_chapter": "第19章 报告说明",
     "report.dm_notes_chapter_ai": "第19章 报告说明",
     "report.dm_fallback_notes_chapter": "第18章 报告说明",
@@ -2457,4 +2469,18 @@ ZI = {
     "webui.about_desc": "DBCheck 是一款开源数据库智能巡检工具，支持 MySQL、PostgreSQL、Oracle、SQL Server、达梦（DM）、TiDB、IvorySQL 等主流数据库的健康巡检与 AI 诊断。",
     "webui.about_author": "作者：Jack Ge · 开源协议：MIT License · 官网：dbcheck.top",
     "webui.about_grayscale_note": "每年 <strong>5月19日至5月25日</strong>，DBCheck 界面将强制以<strong>灰度模式</strong>显示，且用户无法切换主题。<br/><br/>请尊重这一设计，不要尝试修改或绕过灰度模式。",
+
+    # PG 高优先级检查项（2026-05-21 新增）
+    "report.pg_issue_tablespace_large": "表空间过大",
+    "report.pg_issue_wal_lag": "WAL 复制延迟",
+    "report.pg_issue_xid_age_high": "事务 ID 年龄过高",
+    "report.pg_issue_xid_age_mid": "事务 ID 年龄偏高",
+    "report.pg_issue_pg_stat_statements_off": "pg_stat_statements 未安装",
+    "report.pg_issue_invalid_indexes": "存在无效索引",
+
+    # DM8 增强健康检查（2026-05-21 P0）
+    "report.dm_ch18": "第16章 增强健康检查",
+    "report.dm_ch18_1": "16.1 无效索引检查",
+    "report.dm_ch18_2": "16.2 归档状态",
+    "report.dm_ch18_3": "16.3 备份状态",
 }
