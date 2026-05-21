@@ -2910,7 +2910,7 @@ function formatBytes(bytes) {
       let _editSshPassword = '';
       function onDsDbTypeChange() {
         const dbType = document.getElementById('ds-db-type').value;
-        const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5333};
+        const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5432};
         const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres'};
         document.getElementById('ds-port').value = portMap[dbType] || 3306;
         const userEl = document.getElementById('ds-user');
@@ -5220,7 +5220,7 @@ function selectDbType(type, skipReload) {
   document.getElementById('chk-tidb').textContent = type === 'tidb' ? '✓' : '';
   document.getElementById('chk-ivorysql').textContent = type === 'ivorysql' ? '✓' : '';
   // 默认端口 & 用户名
-  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5333 };
+  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432 };
   const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres' };
   document.getElementById('f-port').value = portMap[type] || 3306;
   document.getElementById('f-user').value = userMap[type] || 'root';
@@ -5624,7 +5624,7 @@ async function startInspection() {
 
   const name = document.getElementById('f-name').value.trim() || (dbType==='mysql'?'MySQL_Server':dbType==='oracle'?'Oracle_Server':dbType==='dm'?'DM8_Server':dbType==='ivorysql'?'IvorySQL_Server':'PG_Server');
   const host = document.getElementById('f-host').value.trim() || 'localhost';
-  const port = parseInt(document.getElementById('f-port').value) || (dbType==='mysql'?3306:dbType==='oracle'?1521:dbType==='dm'?5236:dbType==='ivorysql'?5333:5432);
+  const port = parseInt(document.getElementById('f-port').value) || (dbType==='mysql'?3306:dbType==='oracle'?1521:dbType==='dm'?5236:dbType==='ivorysql'?5432:5432);
   const user = document.getElementById('f-user').value.trim() || (userDefaults[dbType]||'root');
   const password = document.getElementById('f-password').value;
   const database = (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('f-database').value.trim() || 'postgres') : (document.getElementById('f-database').value.trim() || '');

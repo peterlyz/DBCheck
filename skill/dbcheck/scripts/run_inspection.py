@@ -761,7 +761,7 @@ def main():
         sys.exit(1)
     
     if args.port is None:
-        defaults = {'mysql': 3306, 'pg': 5432, 'oracle': 1521, 'sqlserver': 1433, 'dm': 5236, 'tidb': 4000, 'ivorysql': 5333}
+        defaults = {'mysql': 3306, 'pg': 5432, 'oracle': 1521, 'sqlserver': 1433, 'dm': 5236, 'tidb': 4000, 'ivorysql': 5432}
         args.port = defaults.get(args.type, 3306)
 
     db_info = {

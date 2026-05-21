@@ -329,7 +329,7 @@ def _parse_iso(iso_str):
 
 
 def _default_port(db_type):
-    return {'mysql': 3306, 'pg': 5432, 'oracle': 1521, 'dm': 5236, 'sqlserver': 1433, 'tidb': 4000, 'ivorysql': 5333}.get(db_type, 3306)
+    return {'mysql': 3306, 'pg': 5432, 'oracle': 1521, 'dm': 5236, 'sqlserver': 1433, 'tidb': 4000, 'ivorysql': 5432}.get(db_type, 3306)
 
 
 def _default_user(db_type):

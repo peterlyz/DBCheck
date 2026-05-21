@@ -1682,7 +1682,7 @@ class ExcelTemplateManager:
                 ["序号", "自动生成的序号，用于标识"],
                 ["数据库标签", "用于报告标识的名称，如'生产数据库'"],
                 ["主机地址", "IvorySQL服务器IP地址或主机名"],
-                ["端口", "IvorySQL服务端口，默认5333"],
+                ["端口", "IvorySQL服务端口，默认5432"],
                 ["用户名", "连接数据库的用户名"],
                 ["密码", "连接数据库的密码"],
                 ["数据库名称", "要连接的数据库名称(可选)"],
@@ -1942,7 +1942,7 @@ class getData(object):
         初始化空的 context 字典，用于存储所有巡检结果。
 
         :param ip: IvorySQL 服务器 IP 地址或主机名
-        :param port: IvorySQL 服务端口（默认 5333）
+        :param port: IvorySQL 服务端口（默认 5432）
         :param user: IvorySQL 登录用户名
         :param password: IvorySQL 登录密码
         :param ssh_info: SSH 连接信息字典（可选），含 ssh_host、ssh_port、ssh_user、
