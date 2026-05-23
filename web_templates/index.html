@@ -375,7 +375,7 @@ async function executeFixSql(taskId, sql) {
 
 .content {
   padding: 36px 40px;
-  max-width: 900px;
+  max-width: 100%;
   margin-left: auto;
   margin-right: auto;
   width: 100%;
@@ -768,7 +768,7 @@ select option { background: var(--surface2); }
 /* 首页区域 */
 .home-section {
   width: 100%;
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto 32px;
 }
 .section-header {
@@ -2133,6 +2133,139 @@ async function executeFixSql(taskId, sql) {
 }
 .table tbody tr:hover { background: rgba(55,138,221,.06); }
 .table tbody tr:last-child td { border-bottom: none; }
+
+/* ─── 健康分数环 ─── */
+.health-ring-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  width: 120px;
+  height: 120px;
+  flex-shrink: 0;
+}
+.health-ring-wrap svg {
+  width: 120px;
+  height: 120px;
+  transform: rotate(-90deg);
+}
+.ring-bg {
+  fill: none;
+  stroke: var(--surface2);
+  stroke-width: 10;
+}
+.ring-fg {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s ease, stroke 0.4s ease;
+}
+.health-ring-text {
+  position: absolute;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ─── 巡检进度节点 ─── */
+.insp-progress {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+}
+.insp-progress.show { display: flex; }
+.insp-inner {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 48px;
+  text-align: center;
+  min-width: 420px;
+}
+.insp-nodes {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: 20px;
+}
+.insp-node {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  color: var(--text-muted);
+  transition: all 0.4s ease;
+  position: relative;
+}
+.insp-node.active {
+  border-color: var(--accent2);
+  background: rgba(56,139,253,0.15);
+  color: var(--accent2);
+  animation: nodePulse 1.4s ease-in-out infinite;
+}
+.insp-node.done {
+  border-color: var(--accent);
+  background: rgba(46,160,67,0.15);
+  color: var(--accent);
+}
+.insp-line {
+  width: 64px;
+  height: 3px;
+  background: var(--border);
+  transition: background 0.4s ease;
+}
+.insp-line.done { background: var(--accent); }
+@keyframes nodePulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(56,139,253,0.3); }
+  50%      { box-shadow: 0 0 0 10px rgba(56,139,253,0); }
+}
+.insp-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.insp-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 20px;
+}
+
+/* ─── 结果卡片 v2（健康环） ─── */
+.result-card-v2 {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 20px 24px;
+  background: rgba(46,160,67,0.08);
+  border: 1px solid rgba(46,160,67,0.25);
+  border-radius: 10px;
+  margin-top: 16px;
+}
+.result-card-v2 .result-info {
+  flex: 1;
+}
+.result-card-v2 .result-info h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.result-card-v2 .result-info p {
+  font-size: 12px;
+  color: var(--text-muted);
+}
 </style>
 </head>
 <body>
@@ -3507,7 +3640,7 @@ function formatBytes(bytes) {
                 <div class="tc-check" id="chk-oracle">✓</div>
               </div>
               <div class="tc-name" data-i18n="webui.db_oracle_name">Oracle</div>
-              <div class="tc-desc" data-i18n="webui.db_oracle_desc">基于 OS 层 + 数据库层，覆盖 80+ 检查项，适合 10g~21c+。</div>
+              <div class="tc-desc" data-i18n="webui.db_oracle_desc">基于 OS 层 + 数据库层，覆盖 80+ 检查项，适合 12c~21c+。</div>
             </div>
             <div class="type-card" id="tc-mysql" onclick="selectDbType('mysql')">
               <div class="tc-header">
@@ -5618,6 +5751,7 @@ function fillConfirmPanel() {
 
 // ─── Start Inspection ───
 async function startInspection() {
+  showInspProgress('正在巡检...');
   const btn = document.getElementById('btn-run');
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> ' + i18n('webui.btn_starting');
@@ -5654,6 +5788,7 @@ async function startInspection() {
 
     currentTaskId = data.task_id;
     logOffset = 0;
+    if (typeof socket !== 'undefined') socket.emit('join', {task_id: currentTaskId});
 
     // 切换到运行面板
     document.getElementById('confirm-panel').style.display = 'none';
@@ -5803,9 +5938,15 @@ function pollStatus() {
             else if (c.indexOf('中')>=0 || c.toLowerCase().indexOf('mid')>=0) midCnt++;
           }
           analyzeHtml = `
-          <div class="result-card" style="border-left:3px solid ${highCnt>0?'#f44336':midCnt>0?'#ff9800':'#4caf50'}">
-            <div class="ri">${highCnt>0?'🔴':midCnt>0?'🟡':'🟢'}</div>
-            <div class="rd">
+          <div class="result-card-v2">
+            <div class="health-ring-wrap">
+              <svg viewBox="0 0 120 120">
+                <circle class="ring-bg" cx="60" cy="60" r="45" />
+                <circle class="ring-fg" id="health-ring-fg" cx="60" cy="60" r="45" />
+              </svg>
+              <span class="health-ring-text" id="health-ring-text">-</span>
+            </div>
+            <div class="result-info">
               <h3>${i18n('webui.analyze_issues').replace('{}', issues.length)}</h3>
               <p>${i18n('webui.report_issues_summary').replace('{high}', highCnt).replace('{mid}', midCnt).replace('{low}', issues.length-highCnt-midCnt)}</p>
             </div>
@@ -5923,6 +6064,8 @@ function pollStatus() {
           ${analyzeHtml}
           ${aiHtml}`;
         document.getElementById('done-btns').style.display = '';
+        if (typeof animateHealthRing === 'function') animateHealthRing(data.health_score || 0);
+        hideInspProgress();
       } else if (status === 'error') {
         st.textContent = i18n('webui.status_error');
         sp.style.display = 'none';
@@ -9794,6 +9937,55 @@ function escapeHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+/* ─── 巡检进度动画 ───────────────────────────── */
+function showInspProgress(title) {
+  const el = document.getElementById('insp-overlay');
+  const t = document.getElementById('insp-title');
+  if (t) t.textContent = title || '正在巡检...';
+  setInspStep(0, '连接数据库...');
+  if (el) el.classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function setInspStep(step, label) {
+  for (let i = 0; i <= 3; i++) {
+    const node = document.getElementById('insp-node-' + i);
+    if (!node) continue;
+    node.classList.remove('active', 'done');
+    if (i < step) node.classList.add('done');
+    else if (i === step) node.classList.add('active');
+  }
+  for (let i = 0; i <= 2; i++) {
+    const line = document.getElementById('insp-line-' + i);
+    if (!line) continue;
+    line.classList.remove('done');
+    if (i < step) line.classList.add('done');
+  }
+  const lbl = document.getElementById('insp-label');
+  if (lbl) lbl.textContent = label || '';
+}
+
+function hideInspProgress() {
+  const el = document.getElementById('insp-overlay');
+  if (el) el.classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+function animateHealthRing(score) {
+  const fg = document.getElementById('health-ring-fg');
+  const txt = document.getElementById('health-ring-text');
+  if (!fg) return;
+  const r = 45;
+  const circumference = 2 * Math.PI * r;
+  const offset = circumference * (1 - Math.max(0, Math.min(100, score)) / 100);
+  fg.style.strokeDasharray = circumference;
+  fg.style.strokeDashoffset = offset;
+  if (txt) txt.textContent = Math.round(score);
+  if (score >= 90) fg.style.stroke = 'var(--accent)';
+  else if (score >= 70) fg.style.stroke = '#e3b341';
+  else fg.style.stroke = 'var(--danger)';
+}
+
 // SocketIO 监听巡检进度（可选，用于实时更新）
 if (typeof socket !== 'undefined') {
   socket.on('chat_task_log', function(data) {
@@ -9810,6 +10002,10 @@ if (typeof socket !== 'undefined') {
       }
       currentChatTaskId = null;
     }
+  });
+  // 巡检进度步骤动画
+  socket.on('inspection_step', function(data) {
+    if (typeof setInspStep === 'function') setInspStep(data.step, data.label);
   });
 }
 
@@ -10801,5 +10997,21 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 
+<!-- 巡检进度覆盖层 -->
+<div class="insp-progress" id="insp-overlay">
+  <div class="insp-inner">
+    <div class="insp-title" id="insp-title">正在巡检...</div>
+    <div class="insp-nodes">
+      <div class="insp-node active" id="insp-node-0">🔗</div>
+      <div class="insp-line" id="insp-line-0"></div>
+      <div class="insp-node" id="insp-node-1">⚙️</div>
+      <div class="insp-line" id="insp-line-1"></div>
+      <div class="insp-node" id="insp-node-2">🧠</div>
+      <div class="insp-line" id="insp-line-2"></div>
+      <div class="insp-node" id="insp-node-3">📄</div>
+    </div>
+    <div class="insp-label" id="insp-label">连接数据库...</div>
+  </div>
+</div>
 </body>
 </html>

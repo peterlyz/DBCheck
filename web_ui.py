@@ -20,7 +20,7 @@ if _script_dir not in sys.path:
 
 from flask import Flask, request, jsonify, render_template, Response, send_file
 from version import __version__
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import socket
 from i18n import t as _t
 
@@ -298,6 +298,7 @@ def run_mysql_task(task_id, db_info, inspector_name):
         emit(event, data, room=task_id)
 
     _emit('log', {'msg': _t('webui.log_mysql_start').format(ts=_ts())})
+    _emit('inspection_step', {'step': 0, 'msg': _t('webui.log_connecting').format(ts=_ts(), host=db_info['ip'], port=db_info['port'])})
 
     if not main_mysql:
         _emit('error', {'msg': _t('webui.err_mysql_module')})
@@ -310,6 +311,7 @@ def run_mysql_task(task_id, db_info, inspector_name):
         if not ok:
             raise RuntimeError(_t('webui.err_db_connect').format(ver=ver))
         _emit('log', {'msg': _t('webui.log_connected').format(ts=_ts(), ver=ver)})
+        _emit('inspection_step', {'step': 1, 'msg': _t('webui.log_executing_sql').format(ts=_ts())})
 
         ssh_info = {}
         if db_info.get('ssh_host'):
@@ -331,6 +333,8 @@ def run_mysql_task(task_id, db_info, inspector_name):
                 _emit('log', {'msg': _msg_clean})
             _orig_mysql_print(*_a, **_kw)
         _bi.print = _web_mysql_print
+        _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
+        _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
         try:
             ret = data.checkdb('builtin')
         finally:
@@ -342,6 +346,7 @@ def run_mysql_task(task_id, db_info, inspector_name):
 
 
         # ── 生成 Word 报告 ───────────────────────────────────
+        _emit('inspection_step', {'step': 3, 'msg': _t('webui.log_generating_report').format(ts=_ts())})
         _emit('log', {'msg': _t('webui.log_generating_report').format(ts=_ts())})
         label_name = db_info.get('name', db_info.get('ip', 'unknown'))
         db_name = db_info.get('database') or 'postgres'
@@ -473,6 +478,7 @@ def run_mysql_task(task_id, db_info, inspector_name):
         except Exception as e:
             _emit('log', {'msg': f"[警告] Pro 巡检记录保存失败: {e}"})
 
+        _emit('inspection_step', {'step': 4})
         _emit('done', {'msg': _t('webui.log_inspection_done').format(ver=ver), 'task_id': task_id})
     except Exception as e:
         _emit('error', {'msg': _t('webui.err_inspection').format(task='MySQL', e=e)})
@@ -502,6 +508,7 @@ def run_pg_task(task_id, db_info, inspector_name):
         if not ok:
             raise RuntimeError(_t('webui.err_db_connect').format(ver=ver))
         _emit('log', {'msg': _t('webui.log_connected').format(ts=_ts(), ver=ver)})
+        _emit('inspection_step', {'step': 1, 'msg': _t('webui.log_executing_sql').format(ts=_ts())})
 
         ssh_info = {}
         if db_info.get('ssh_host'):
@@ -524,6 +531,7 @@ def run_pg_task(task_id, db_info, inspector_name):
                 _emit('log', {'msg': _msg_clean})
             _orig_pg_print(*_a, **_kw)
         _bi.print = _web_pg_print
+        _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
         try:
             ret = data.checkdb('builtin')
         finally:
@@ -533,6 +541,7 @@ def run_pg_task(task_id, db_info, inspector_name):
             raise RuntimeError(_t('webui.err_checkdb_false'))
 
         # ── 生成 Word 报告 ───────────────────────────────────
+        _emit('inspection_step', {'step': 3, 'msg': _t('webui.log_generating_report').format(ts=_ts())})
         _emit('log', {'msg': _t('webui.log_generating_report').format(ts=_ts())})
         label_name = db_info.get('name', db_info.get('ip', 'unknown'))
         db_name = db_info.get('database') or 'postgres'
@@ -660,6 +669,7 @@ def run_pg_task(task_id, db_info, inspector_name):
         except Exception as e:
             _emit('log', {'msg': f"[警告] Pro 巡检记录保存失败: {e}"})
 
+        _emit('inspection_step', {'step': 4})
         _emit('done', {'msg': _t('webui.log_inspection_done').format(ver=ver), 'task_id': task_id})
     except Exception as e:
         _emit('error', {'msg': _t('webui.err_inspection').format(task='PostgreSQL', e=e)})
@@ -860,6 +870,7 @@ def run_dm_task(task_id, db_info, inspector_name):
         if not ok:
             raise RuntimeError(_t('webui.err_db_connect').format(ver=ver))
         _emit('log', {'msg': _t('webui.log_connected').format(ts=_ts(), ver=ver)})
+        _emit('inspection_step', {'step': 1, 'msg': _t('webui.log_executing_sql').format(ts=_ts())})
 
         ssh_info = {}
         if db_info.get('ssh_host'):
@@ -905,6 +916,7 @@ def run_dm_task(task_id, db_info, inspector_name):
             task['ai_advice'] = context.get('ai_advice', '')
 
         # 生成报告文件
+        _emit('inspection_step', {'step': 3, 'msg': _t('webui.log_generating_report').format(ts=_ts())})
         _emit('log', {'msg': _t('webui.log_generating_report').format(ts=_ts())})
         reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
         os.makedirs(reports_dir, exist_ok=True)
@@ -1058,6 +1070,7 @@ def run_sqlserver_task(task_id, db_info, inspector_name):
         if not ok:
             raise RuntimeError(_t('webui.err_db_connect').format(ver=ver))
         _emit('log', {'msg': _t('webui.log_connected').format(ts=_ts(), ver=ver)})
+        _emit('inspection_step', {'step': 1, 'msg': _t('webui.log_executing_sql').format(ts=_ts())})
 
         ssh_info = {}
         if db_info.get('ssh_host'):
@@ -1105,6 +1118,7 @@ def run_sqlserver_task(task_id, db_info, inspector_name):
             task['ai_advice'] = inspector.data.get('ai_advice', '')
 
         # 生成报告文件
+        _emit('inspection_step', {'step': 3, 'msg': _t('webui.log_generating_report').format(ts=_ts())})
         _emit('log', {'msg': _t('webui.log_generating_report').format(ts=_ts())})
         reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
         os.makedirs(reports_dir, exist_ok=True)
@@ -1252,6 +1266,7 @@ def run_tidb_task(task_id, db_info, inspector_name):
         if not ok:
             raise RuntimeError(_t('webui.err_db_connect').format(ver=ver))
         _emit('log', {'msg': _t('webui.log_connected').format(ts=_ts(), ver=ver)})
+        _emit('inspection_step', {'step': 1, 'msg': _t('webui.log_executing_sql').format(ts=_ts())})
 
         ssh_info = {}
         if db_info.get('ssh_host'):
@@ -1273,6 +1288,7 @@ def run_tidb_task(task_id, db_info, inspector_name):
                 _emit('log', {'msg': _msg_clean})
             _orig_tidb_print(*_a, **_kw)
         _bi.print = _web_tidb_print
+        _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
         try:
             ret = data.checkdb('builtin')
         finally:
@@ -1282,6 +1298,7 @@ def run_tidb_task(task_id, db_info, inspector_name):
             raise RuntimeError(_t('webui.err_checkdb_false'))
 
         # ── 生成 Word 报告 ──────────────────────────────────────────
+        _emit('inspection_step', {'step': 3, 'msg': _t('webui.log_generating_report').format(ts=_ts())})
         _emit('log', {'msg': _t('webui.log_generating_report').format(ts=_ts())})
         label_name = db_info.get('name', db_info.get('ip', 'unknown'))
         db_name = db_info.get('database') or 'postgres'
@@ -1406,6 +1423,7 @@ def run_tidb_task(task_id, db_info, inspector_name):
         except Exception as e:
             _emit('log', {'msg': f"[警告] Pro 巡检记录保存失败: {e}"})
 
+        _emit('inspection_step', {'step': 4})
         _emit('done', {'msg': _t('webui.log_inspection_done').format(ver=ver), 'task_id': task_id})
     except Exception as e:
         import traceback
@@ -1440,6 +1458,7 @@ def run_ivorysql_task(task_id, db_info, inspector_name):
         if not ok:
             raise RuntimeError(_t('webui.err_db_connect').format(ver=ver))
         _emit('log', {'msg': _t('webui.log_connected').format(ts=_ts(), ver=ver)})
+        _emit('inspection_step', {'step': 1, 'msg': _t('webui.log_executing_sql').format(ts=_ts())})
 
         ssh_info = {}
         if db_info.get('ssh_host'):
@@ -1462,6 +1481,7 @@ def run_ivorysql_task(task_id, db_info, inspector_name):
                 _emit('log', {'msg': _msg_clean})
             _orig_print(*_a, **_kw)
         _bi.print = _web_print
+        _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
         try:
             ret = data.checkdb('builtin')
         finally:
@@ -1471,6 +1491,7 @@ def run_ivorysql_task(task_id, db_info, inspector_name):
             raise RuntimeError(_t('webui.err_checkdb_false'))
 
         # ── 生成 Word 报告 ──────────────────────────────────────────
+        _emit('inspection_step', {'step': 3, 'msg': _t('webui.log_generating_report').format(ts=_ts())})
         _emit('log', {'msg': _t('webui.log_generating_report').format(ts=_ts())})
         label_name = db_info.get('name', db_info.get('ip', 'unknown'))
         db_name = db_info.get('database') or 'postgres'
@@ -1607,6 +1628,7 @@ def run_ivorysql_task(task_id, db_info, inspector_name):
         except Exception as e:
             _emit('log', {'msg': f"[警告] Pro 巡检记录保存失败: {e}"})
 
+        _emit('inspection_step', {'step': 4})
         _emit('done', {'msg': _t('webui.log_inspection_done').format(ver=ver), 'task_id': task_id})
     except Exception as e:
         import traceback
@@ -2848,7 +2870,8 @@ def on_connect():
 def on_join(data):
     task_id = data.get('task_id')
     if task_id:
-        socketio.emit('log', {'msg': _t('webui.ws_connected_waiting').format(ts=_ts())})
+        join_room(task_id)
+        socketio.emit('log', {'msg': _t('webui.ws_connected_waiting').format(ts=_ts())}, room=task_id)
 
 # ══════════════════════════════════════════════════════════════
 # 定时调度 API
@@ -5175,7 +5198,8 @@ def on_connect():
 def on_join(data):
     task_id = data.get('task_id')
     if task_id:
-        socketio.emit('log', {'msg': _t('webui.ws_connected_waiting').format(ts=_ts())})
+        join_room(task_id)
+        socketio.emit('log', {'msg': _t('webui.ws_connected_waiting').format(ts=_ts())}, room=task_id)
 
 
 if __name__ == '__main__':
