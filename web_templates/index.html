@@ -772,18 +772,22 @@ select option { background: var(--surface2); }
   margin: 0 auto 14px;
 }
 .section-header {
-  text-align: center;
-  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 6px;
 }
 .section-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 4px;
+  margin: 0;
 }
 .section-desc {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-muted);
+  opacity: 0.7;
 }
 
 /* 功能卡片网格 */
@@ -836,7 +840,7 @@ select option { background: var(--surface2); }
 /* 数据库支持网格 */
 .db-support-grid {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   gap: 8px;
 }
 .db-support-card {
@@ -1530,7 +1534,7 @@ async function executeFixSql(taskId, sql) {
     grid-template-columns: 1fr;
   }
   .db-support-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -1598,7 +1602,7 @@ async function executeFixSql(taskId, sql) {
 // ══════════════════════════════════════════════════════════════
 @media (max-width: 600px) {
   .db-support-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
   }
   .feature-card {
     flex-direction: column;
@@ -3427,7 +3431,7 @@ function formatBytes(bytes) {
         <div class="home-overview" id="home-overview-section" style="display:none;">
           <div class="section-header">
             <h2 class="section-title" data-i18n="webui.home_overview_title">系统概览</h2>
-            <p class="section-desc" data-i18n="webui.home_overview_subtitle">运行状态实时监控</p>
+            <span class="section-desc" data-i18n="webui.home_overview_subtitle">运行状态实时监控</span>
           </div>
           <div class="overview-grid">
             <!-- 健康评分仪表盘 -->
@@ -3510,7 +3514,7 @@ function formatBytes(bytes) {
         <div class="home-section">
           <div class="section-header">
             <h2 class="section-title" data-i18n="webui.home_section_title">核心功能</h2>
-            <p class="section-desc" data-i18n="webui.home_section_desc">一站式数据库健康巡检解决方案</p>
+            <span class="section-desc" data-i18n="webui.home_section_desc">一站式数据库健康巡检解决方案</span>
           </div>
           <div class="feature-grid-new">
             <div class="feature-card">
@@ -3555,7 +3559,7 @@ function formatBytes(bytes) {
         <div class="home-section">
           <div class="section-header">
             <h2 class="section-title" data-i18n="webui.db_support_title">支持的数据库</h2>
-            <p class="section-desc" data-i18n="webui.db_support_desc">覆盖主流开源与商业数据库</p>
+            <span class="section-desc" data-i18n="webui.db_support_desc">覆盖主流开源与商业数据库</span>
           </div>
           <div class="db-support-grid">
             <div class="db-support-card db-mysql">
@@ -11015,6 +11019,8 @@ document.addEventListener('keydown', function(e) {
 </div>
 </body>
 </html>
+
+
 
 
 

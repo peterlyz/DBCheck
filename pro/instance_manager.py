@@ -170,6 +170,8 @@ class InstanceManager:
                 pass
 
         # JSON 回退（兼容旧数据）
+        # 注意：一旦从 instances.db 成功加载，立即把 instances.json 重命名为 .bak，
+        # 防止 DB 损坏时旧数据回流，导致已删除实例"复活"。
         if not self._instances and os.path.exists(self.instances_file):
             try:
                 with open(self.instances_file, "r", encoding="utf-8") as f:
@@ -179,6 +181,15 @@ class InstanceManager:
                             inst_data['db_type'] = 'oracle'
                         inst = DatabaseInstance.from_dict(inst_data)
                         self._instances[inst.id] = inst
+            except Exception:
+                pass
+        elif self._instances and os.path.exists(self.instances_file):
+            # 已从 instances.db 成功加载，把旧 JSON 文件重命名为 .bak，避免回流
+            try:
+                bak_file = self.instances_file + '.bak'
+                if os.path.exists(bak_file):
+                    os.remove(bak_file)
+                os.rename(self.instances_file, bak_file)
             except Exception:
                 pass
 
@@ -215,74 +226,90 @@ class InstanceManager:
             self._groups["test"] = InstanceGroup("test", "测试环境", "#639922")
 
     def _save_data(self):
-        """保存数据到 SQLite"""
+        """保存数据到 SQLite（失败直接抛异常，不静默吞掉）"""
         # ── 保存实例到 instances.db ──
-        conn = sqlite3.connect(self.instances_db)
-        c = conn.cursor()
-        # 迁移：为旧表添加 database 列
+        conn = None
         try:
-            c.execute('ALTER TABLE instances ADD COLUMN "database" TEXT DEFAULT \'\'')
-        except Exception:
-            pass
-        # 确保表存在
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS instances (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL, db_type TEXT NOT NULL, host TEXT NOT NULL,
-                port INTEGER NOT NULL, "user" TEXT NOT NULL,                 password TEXT DEFAULT '',
-                "database" TEXT DEFAULT '',
-                service_name TEXT DEFAULT '', sysdba INTEGER DEFAULT 0,
-                ssh_host TEXT DEFAULT '', ssh_port INTEGER DEFAULT 22,
-                ssh_user TEXT DEFAULT '', ssh_password TEXT DEFAULT '',
-                ssh_key_file TEXT DEFAULT '', ssh_enabled INTEGER DEFAULT 0,
-                tags TEXT DEFAULT '[]', "group" TEXT DEFAULT 'default',
-                enabled INTEGER DEFAULT 1, description TEXT DEFAULT '',
-                created_at TEXT DEFAULT '', updated_at TEXT DEFAULT ''
-            )
-        """)
-        for inst in self._instances.values():
-            d = inst.to_dict() if not isinstance(inst, dict) else inst
+            conn = sqlite3.connect(self.instances_db)
+            c = conn.cursor()
+            # 迁移：为旧表添加 database 列
+            try:
+                c.execute('ALTER TABLE instances ADD COLUMN "database" TEXT DEFAULT \'\'')
+            except Exception:
+                pass
+            # 确保表存在
             c.execute("""
-                INSERT OR REPLACE INTO instances
-                (id, name, db_type, host, port, "user", password, "database", service_name, sysdba,
-                 ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_file, ssh_enabled,
-                 tags, "group", enabled, description, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                d.get("id", ""), d.get("name", ""), d.get("db_type", ""),
-                d.get("host", ""), d.get("port", 0), d.get("user", ""),
-                d.get("password", ""), d.get("database", ""), d.get("service_name", ""),
-                1 if d.get("sysdba") else 0,
-                d.get("ssh_host", ""), d.get("ssh_port", 22),
-                d.get("ssh_user", ""), d.get("ssh_password", ""),
-                d.get("ssh_key_file", ""), 1 if d.get("ssh_enabled") else 0,
-                json.dumps(d.get("tags", []), ensure_ascii=False),
-                d.get("group", "default"), 1 if d.get("enabled", True) else 0,
-                d.get("description", ""), d.get("created_at", ""), d.get("updated_at", "")
-            ))
-        conn.commit()
-        conn.close()
+                CREATE TABLE IF NOT EXISTS instances (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL, db_type TEXT NOT NULL, host TEXT NOT NULL,
+                    port INTEGER NOT NULL, "user" TEXT NOT NULL,                 password TEXT DEFAULT '',
+                    "database" TEXT DEFAULT '',
+                    service_name TEXT DEFAULT '', sysdba INTEGER DEFAULT 0,
+                    ssh_host TEXT DEFAULT '', ssh_port INTEGER DEFAULT 22,
+                    ssh_user TEXT DEFAULT '', ssh_password TEXT DEFAULT '',
+                    ssh_key_file TEXT DEFAULT '', ssh_enabled INTEGER DEFAULT 0,
+                    tags TEXT DEFAULT '[]', "group" TEXT DEFAULT 'default',
+                    enabled INTEGER DEFAULT 1, description TEXT DEFAULT '',
+                    created_at TEXT DEFAULT '', updated_at TEXT DEFAULT ''
+                )
+            """)
+            c.execute("DELETE FROM instances")
+            for inst in self._instances.values():
+                d = inst.to_dict() if not isinstance(inst, dict) else inst
+                c.execute("""
+                    INSERT OR REPLACE INTO instances
+                    (id, name, db_type, host, port, "user", password, "database", service_name, sysdba,
+                     ssh_host, ssh_port, ssh_user, ssh_password, ssh_key_file, ssh_enabled,
+                     tags, "group", enabled, description, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    d.get("id", ""), d.get("name", ""), d.get("db_type", ""),
+                    d.get("host", ""), d.get("port", 0), d.get("user", ""),
+                    d.get("password", ""), d.get("database", ""), d.get("service_name", ""),
+                    1 if d.get("sysdba") else 0,
+                    d.get("ssh_host", ""), d.get("ssh_port", 22),
+                    d.get("ssh_user", ""), d.get("ssh_password", ""),
+                    d.get("ssh_key_file", ""), 1 if d.get("ssh_enabled") else 0,
+                    json.dumps(d.get("tags", []), ensure_ascii=False),
+                    d.get("group", "default"), 1 if d.get("enabled", True) else 0,
+                    d.get("description", ""), d.get("created_at", ""), d.get("updated_at", "")
+                ))
+            conn.commit()
+        except Exception as e:
+            print(f"[InstanceManager] 保存 instances.db 失败: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
 
         # ── 保存分组到 groups.db ──
-        conn = sqlite3.connect(self.groups_db)
-        c = conn.cursor()
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS groups (
-                name TEXT PRIMARY KEY,
-                description TEXT DEFAULT '',
-                color TEXT DEFAULT '#378ADD',
-                created_at TEXT DEFAULT ''
-            )
-        """)
-        for grp in self._groups.values():
-            d = grp.to_dict() if not isinstance(grp, dict) else grp
+        conn = None
+        try:
+            conn = sqlite3.connect(self.groups_db)
+            c = conn.cursor()
             c.execute("""
-                INSERT OR REPLACE INTO groups (name, description, color, created_at)
-                VALUES (?, ?, ?, ?)
-            """, (d.get("name", ""), d.get("description", ""),
-                  d.get("color", "#378ADD"), d.get("created_at", "")))
-        conn.commit()
-        conn.close()
+                CREATE TABLE IF NOT EXISTS groups (
+                    name TEXT PRIMARY KEY,
+                    description TEXT DEFAULT '',
+                    color TEXT DEFAULT '#378ADD',
+                    created_at TEXT DEFAULT ''
+                )
+            """)
+            c.execute("DELETE FROM groups")
+            for grp in self._groups.values():
+                d = grp.to_dict() if not isinstance(grp, dict) else grp
+                c.execute("""
+                    INSERT OR REPLACE INTO groups (name, description, color, created_at)
+                    VALUES (?, ?, ?, ?)
+                """, (d.get("name", ""), d.get("description", ""),
+                      d.get("color", "#378ADD"), d.get("created_at", "")))
+            conn.commit()
+        except Exception as e:
+            print(f"[InstanceManager] 保存 groups.db 失败: {e}")
+            raise
+        finally:
+            if conn:
+                conn.close()
 
     def _init_database(self):
         """初始化数据库"""
@@ -478,27 +505,42 @@ class InstanceManager:
         return {"ok": True, "message": "实例更新成功"}
 
     def delete_instance(self, instance_id: str) -> Dict[str, Any]:
-        """删除实例，同时清理巡检历史和趋势数据"""
+        """删除实例，同时清理巡检历史和趋势数据；失败回滚，不静默部分成功"""
         if instance_id not in self._instances:
             return {"ok": False, "message": "实例不存在"}
 
+        # 先备份，便于回滚
+        deleted_inst = self._instances[instance_id]
+
         # 删除关联的巡检历史和趋势数据
+        hist_conn = None
         try:
-            conn = sqlite3.connect(self.db_file)
-            cursor = conn.cursor()
+            hist_conn = sqlite3.connect(self.db_file)
+            cursor = hist_conn.cursor()
             cursor.execute("DELETE FROM inspection_history WHERE instance_id = ?", (instance_id,))
             cursor.execute("DELETE FROM instance_trend WHERE instance_id = ?", (instance_id,))
-            conn.commit()
+            hist_conn.commit()
         except Exception as e:
-            print(f"删除历史数据失败: {e}")
+            print(f"[InstanceManager] 删除历史数据失败: {e}")
+            if hist_conn:
+                try: hist_conn.close()
+                except Exception: pass
+            raise RuntimeError(f"删除历史数据失败: {e}")
         finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+            if hist_conn:
+                try: hist_conn.close()
+                except Exception: pass
 
+        # 从内存删除，并持久化到 DB
         del self._instances[instance_id]
-        self._save_data()
+        try:
+            self._save_data()
+        except Exception as e:
+            # 回滚：把实例加回内存（DB 写入失败，内存必须与 DB 一致）
+            self._instances[instance_id] = deleted_inst
+            print(f"[InstanceManager] 删除实例持久化失败，已回滚: {e}")
+            raise RuntimeError(f"删除实例持久化失败: {e}")
+
         return {"ok": True, "message": "实例及历史数据删除成功"}
 
     def get_all_instances(self, mask_password: bool = True) -> List[Dict]:
