@@ -3023,14 +3023,30 @@ def api_notifier_save():
 
 @app.route('/api/notifier/test-email', methods=['POST'])
 def api_notifier_test_email():
-    """测试邮件发送"""
+    """测试邮件发送（真正发送测试邮件）"""
     try:
         data = request.json or {}
-        from notifier import EmailNotifier
+        from notifier import EmailNotifier, _load_config
+
         cfg = data.get('email', {})
+
+        # 密码是 *** 或空时，从已保存配置加载真实密码
+        saved = _load_config()
+        saved_email = saved.get('email', {})
+        if not cfg.get('password') or cfg.get('password') == '***':
+            cfg['password'] = saved_email.get('password', '')
+
         notifier = EmailNotifier(cfg)
-        ok, msg = notifier.test_connection()
-        return jsonify({'ok': ok, 'msg': msg})
+
+        # 收件人：优先用请求中的 test_recipients，否则用配置中的 recipients
+        recipients = data.get('test_recipients') or notifier.recipients
+        if not recipients:
+            return jsonify({'ok': False, 'msg': '请填写收件人邮箱地址'}), 400
+
+        ok, error_msg = notifier.send_test(recipients)
+        if ok:
+            return jsonify({'ok': True, 'msg': '测试邮件已发送，请查收收件箱'})
+        return jsonify({'ok': False, 'msg': error_msg or '邮件发送失败，请检查 SMTP 配置'}), 500
     except Exception as e:
         return jsonify({'ok': False, 'msg': str(e)}), 500
 
