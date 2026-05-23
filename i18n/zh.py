@@ -11,7 +11,7 @@ ZI = {
     "cli.main_menu_line4": "🟠  4 │ SQL Server（2012+）",
     "cli.main_menu_line5": "🟡  5 │ DM8 达梦（DM8+）",
     "cli.main_menu_line6": "🐬  6 │ TiDB（6.5+ / MySQL 8.0+ 兼容）",
-    "cli.main_menu_line7": "🐘  7 │ IvorySQL（瀚高，PG+Oracle 兼容）",
+    "cli.main_menu_line7": "🐘  7 │ IvorySQL（4.5.3+ / PG+Oracle 兼容）",
     "cli.main_menu_line8": "📋  8 │ 批量生成巡检模板",
     "cli.main_menu_line9": "🌐  9 │ 启动 Web UI",
     "cli.main_menu_line10": "❌  0 │ 退出",
