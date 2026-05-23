@@ -59,6 +59,10 @@ body {
 /* ─── 背景动画层 ─── */
 .bg-anim {
   position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   inset: 0;
   pointer-events: none;
   z-index: 0;
@@ -75,6 +79,10 @@ body {
 /* 水波纹（CSS 动画） */
 .ripple-container {
   position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   inset: 0;
   pointer-events: none;
   z-index: 1;
@@ -2029,6 +2037,10 @@ async function executeFixSql(taskId, sql) {
 }
 .health-score-text {
   position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   inset: 0;
   display: flex;
   flex-direction: column;
@@ -2176,6 +2188,10 @@ async function executeFixSql(taskId, sql) {
 .insp-progress {
   display: none;
   position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   inset: 0;
   background: rgba(0,0,0,0.55);
   z-index: 9999;
@@ -2370,66 +2386,82 @@ function fallbackCopy(text, msg) {
 }
 
 function showShareLinkDialog(url) {
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000';
+  const backdropId = 'share-link-backdrop-' + Date.now();
   const inputId = 'share-input-' + Date.now();
-  modal.innerHTML = `
-    <div style="background:#1c2128;border:1px solid #30363d;border-radius:12px;padding:24px;max-width:500px;width:90%">
-      <h3 style="margin:0 0 12px;color:#f0f6fc;font-size:16px">📤 分享链接</h3>
-      <p style="margin:0 0 12px;color:#8b949e;font-size:13px">链接已生成，请复制后分享：</p>
-      <input id="${inputId}" type="text" value="${url}" readonly style="width:100%;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#58a6ff;font-size:13px;margin-bottom:16px" onclick="this.select()">
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button id="copy-btn-${inputId}" style="padding:8px 16px;background:#238636;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">复制链接</button>
-        <button onclick="this.closest('div[style*=fixed]').remove()" style="padding:8px 16px;background:#30363d;color:#c9d1d9;border:none;border-radius:6px;cursor:pointer;font-size:13px">关闭</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  // 绑定复制按钮事件
-  document.getElementById('copy-btn-' + inputId).onclick = function() {
-    const input = document.getElementById(inputId);
+  const html =
+    '<div id="' + backdropId + '" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center">' +
+      '<div style="background:#1c2128;border:1px solid #30363d;border-radius:12px;padding:24px;max-width:500px;width:90%;max-height:calc(100vh - 32px);overflow-y:auto">' +
+        '<h3 style="margin:0 0 12px;color:#f0f6fc;font-size:16px">📤 分享链接</h3>' +
+        '<p style="margin:0 0 12px;color:#8b949e;font-size:13px">链接已生成，请复制后分享：</p>' +
+        '<input id="' + inputId + '" type="text" value="' + escHtml(url) + '" readonly style="width:100%;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#58a6ff;font-size:13px;margin-bottom:16px" onclick="this.select()">' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+          '<button id="copy-btn-' + inputId + '" style="padding:8px 16px;background:#238636;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">复制链接</button>' +
+          '<button onclick="document.getElementById(\'' + backdropId + '\').remove()" style="padding:8px 16px;background:#30363d;color:#c9d1d9;border:none;border-radius:6px;cursor:pointer;font-size:13px">关闭</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  document.documentElement.insertAdjacentHTML('beforeend', html);
+  const backdrop = document.getElementById(backdropId);
+  backdrop.addEventListener('click', function(e) {
+    if (e.target === backdrop) backdrop.remove();
+  });
+  backdrop.querySelector('#copy-btn-' + inputId).addEventListener('click', function() {
+    const input = backdrop.querySelector('#' + inputId);
     input.select();
+    function onCopied() {
+      backdrop.querySelector('#copy-btn-' + inputId).textContent = '已复制';
+      backdrop.querySelector('#copy-btn-' + inputId).style.background = '#2ea043';
+      setTimeout(function() { backdrop.remove(); }, 1500);
+    }
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(url).then(() => {
-        this.textContent = '已复制';
-        this.style.background = '#2ea043';
-        setTimeout(() => modal.remove(), 1500);
-      }).catch(() => {
+      navigator.clipboard.writeText(url).then(onCopied).catch(function() {
         document.execCommand('copy');
-        this.textContent = '已复制';
-        this.style.background = '#2ea043';
-        setTimeout(() => modal.remove(), 1500);
+        onCopied();
       });
     } else {
       document.execCommand('copy');
-      this.textContent = '已复制';
-      this.style.background = '#2ea043';
-      setTimeout(() => modal.remove(), 1500);
+      onCopied();
     }
-  };
+  });
 }
 
 function showConfirmDialog(title, message) {
   return new Promise((resolve) => {
-    const modal = document.createElement('div');
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:10000';
-    modal.innerHTML = `
-      <div style="background:#1c2128;border:1px solid #30363d;border-radius:12px;padding:24px;max-width:420px;width:90%">
-        <h3 style="margin:0 0 12px;color:#f0f6fc;font-size:16px">${escHtml(title)}</h3>
-        <p style="margin:0 0 20px;color:#c9d1d9;font-size:14px;white-space:pre-wrap">${escHtml(message)}</p>
-        <div style="display:flex;gap:8px;justify-content:flex-end">
-          <button id="confirm-cancel" style="padding:8px 16px;background:#30363d;color:#c9d1d9;border:none;border-radius:6px;cursor:pointer;font-size:13px">取消</button>
-          <button id="confirm-ok" style="padding:8px 16px;background:#f85149;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">确定</button>
-        </div>
-      </div>`;
-    document.body.appendChild(modal);
-    document.getElementById('confirm-cancel').onclick = () => {
-      modal.remove();
-      resolve(false);
-    };
-    document.getElementById('confirm-ok').onclick = () => {
-      modal.remove();
-      resolve(true);
-    };
+    const backdropId = 'confirm-backdrop-' + Date.now();
+    const html =
+      '<div id="' + backdropId + '" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center">' +
+        '<div style="background:#1c2128;border:1px solid #30363d;border-radius:12px;padding:24px;max-width:420px;width:90%;max-height:calc(100vh - 32px);overflow-y:auto;color:#c9d1d9;">' +
+          '<h3 style="margin:0 0 12px;color:#f0f6fc;font-size:16px">' + escHtml(title) + '</h3>' +
+          '<p style="margin:0 0 20px;color:#c9d1d9;font-size:14px;white-space:pre-wrap">' + escHtml(message) + '</p>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button id="' + backdropId + '-cancel" style="padding:8px 16px;background:#30363d;color:#c9d1d9;border:none;border-radius:6px;cursor:pointer;font-size:13px">取消</button>' +
+            '<button id="' + backdropId + '-ok" style="padding:8px 16px;background:#f85149;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:13px">确定</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    document.documentElement.insertAdjacentHTML('beforeend', html);
+    const backdrop = document.getElementById(backdropId);
+
+    let resolved = false;
+    function cleanUp(result) {
+      if (resolved) return;
+      resolved = true;
+      document.removeEventListener('keydown', onKey);
+      backdrop.remove();
+      resolve(result);
+    }
+
+    function onKey(e) {
+      if (e.key === 'Escape') { e.preventDefault(); cleanUp(false); }
+    }
+    document.addEventListener('keydown', onKey);
+
+    backdrop.addEventListener('click', function(e) {
+      if (e.target === backdrop) { e.stopPropagation(); cleanUp(false); }
+    });
+
+    backdrop.querySelector('#' + backdropId + '-cancel').addEventListener('click', function() { cleanUp(false); });
+    backdrop.querySelector('#' + backdropId + '-ok').addEventListener('click', function() { cleanUp(true); });
   });
 }
 
@@ -2874,7 +2906,7 @@ function formatBytes(bytes) {
             '</div>' +
           '</div>' +
         '</div>';
-        document.body.insertAdjacentHTML('beforeend', html);
+        document.documentElement.insertAdjacentHTML('beforeend', html);
       }
 
       async function deleteGroup(groupName) {
@@ -2924,7 +2956,7 @@ function formatBytes(bytes) {
             '</div>' +
           '</div>' +
         '</div>';
-        document.body.insertAdjacentHTML('beforeend', html);
+        document.documentElement.insertAdjacentHTML('beforeend', html);
         document.getElementById('group-name-input').focus();
       }
 
@@ -3030,7 +3062,7 @@ function formatBytes(bytes) {
               '<button class="btn btn-primary" onclick="saveDatasource()">' + saveBtnText + '</button>' +
             '</div>' +
           '</div></div>';
-        document.body.insertAdjacentHTML('beforeend', html);
+        document.documentElement.insertAdjacentHTML('beforeend', html);
         onDsDbTypeChange();
         // 填充分组 select
         fetch('/api/pro/groups').then(r=>r.json()).then(d=>{
@@ -6333,7 +6365,7 @@ function showReportIssues(filename, autoAnalyzeB64) {
       </div>
     </div>
   </div>`;
-  document.body.insertAdjacentHTML('beforeend', html);
+  document.documentElement.insertAdjacentHTML('beforeend', html);
 }
 
 // ─── 一键修复建议功能 ───────────────────────────────────────
@@ -8596,7 +8628,7 @@ function toastError(msg, duration)   { return toast(msg, 'error', duration || 50
 function toastConfirm(msg) {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(2px)';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:10000;backdrop-filter:blur(2px)';
     overlay.innerHTML = `
       <div style="background:var(--surface2,#1c2128);border:1px solid var(--border,#30363d);border-radius:12px;padding:24px;max-width:420px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.45);animation:toastIn 0.2s ease">
         <div style="margin:0 0 18px;color:var(--text,#f0f6fc);font-size:14px;line-height:1.6;word-break:break-all;white-space:pre-wrap">${escHtml(String(msg))}</div>
@@ -9083,7 +9115,7 @@ function showPromptModal(title, msg) {
           '</div>' +
         '</div>' +
       '</div>';
-    document.body.insertAdjacentHTML('beforeend', html);
+    document.documentElement.insertAdjacentHTML('beforeend', html);
     window['_pr_' + id] = resolve;
     setTimeout(function() { var el = document.getElementById(id + '-input'); if (el) el.focus(); }, 100);
   });
@@ -10350,7 +10382,7 @@ function showBackupConfirm(msg, onConfirm) {
           '<button class="btn btn-ghost" onclick="document.getElementById(\'backup-confirm-backdrop\').remove()">取消</button>' +
           '<button class="btn btn-primary" style="background:var(--danger)" id="backup-confirm-ok">确认删除</button>' +
         '</div></div></div>';
-    document.body.insertAdjacentHTML('beforeend', html);
+    document.documentElement.insertAdjacentHTML('beforeend', html);
     document.getElementById('backup-confirm-ok').onclick = function() {
         document.getElementById('backup-confirm-backdrop').remove();
         onConfirm();
@@ -10930,7 +10962,7 @@ async function deleteBackupHistory(recordId) {
   </script>
 
 <!-- ─── About Modal ───────────────────────────────────── -->
-<div id="about-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);" onclick="closeAboutModal(event)">
+<div id="about-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:10000;background:rgba(0,0,0,0.55);backdrop-filter:blur(6px);" onclick="closeAboutModal(event)">
   <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;max-width:580px;width:92%;margin:80px auto;padding:36px 32px;position:relative;box-shadow:0 12px 40px rgba(0,0,0,0.5);max-height:85vh;overflow-y:auto;" onclick="event.stopPropagation()">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">
       <img src="/dbcheck_logo.png" alt="DBCheck" style="width:44px;height:44px;border-radius:10px;">

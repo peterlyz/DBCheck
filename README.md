@@ -254,31 +254,31 @@ http://localhost:5003/share/{share_id}
 > Comprehensive inspection for seven mainstream relational databases, covering 150+ enhanced rules.
 
 | Dimension | MySQL | PostgreSQL | Oracle | SQL Server | DM8 | TiDB | IvorySQL |
-|-----------|:-----:|:----------:|:------:|:-----------:|:---:|:----:|
-| Basic Info (version / instance / database) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Session and Connection Status | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Memory and Cache Configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Tablespace Usage | — | — | ✅ | ✅ | ✅ | — |
-| SGA / PGA Memory Analysis | — | — | ✅ | — | ✅ | — |
-| Redo Log Status | — | — | ✅ | — | ✅ | — |
-| Archiving and Backup Checks | — | — | ✅ | ✅ | ✅ | — |
-| Key Parameter Configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Invalid Object Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| User Security Audit | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Top SQL / Slow Queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Master-Slave Replication / Data Guard | ✅ | ✅ | — | — | — | ✅ |
-| RAC Cluster Information | — | — | ✅ | — | — | — |
-| ASM Disk Groups | — | — | ✅ | — | — | — |
-| Undo Tablespace Management | — | — | ✅ | — | ✅ | — |
-| Recycle Bin / Flashback Recovery Area | — | — | ✅ | — | ✅ | — |
-| Profile Password Policy | — | — | ✅ | — | — | — |
-| Top Wait Events | — | — | ✅ | ✅ | ✅ | — |
-| Locks and Blocking Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Stale Statistics Detection | — | — | ✅ | ✅ | ✅ | ✅ |
-| Partitioned Table Information | — | — | ✅ | ✅ | ✅ | ✅ |
-| Datafile Status | — | — | ✅ | ✅ | ✅ | — |
-| DM8 Buffer Pool Details | — | — | — | — | ✅ | — |
-| Placement & Affinity Policy | — | — | — | — | — | ✅ |
+|-----------|:-----:|:----------:|:------:|:-----------:|:---:|:----:|:----:|
+| Basic Info (version / instance / database) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Session and Connection Status | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Memory and Cache Configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Tablespace Usage | — | — | ✅ | ✅ | ✅ | — |— |
+| SGA / PGA Memory Analysis | — | — | ✅ | — | ✅ | — |— |
+| Redo Log Status | — | — | ✅ | — | ✅ | — |— |
+| Archiving and Backup Checks | — | — | ✅ | ✅ | ✅ | — |— |
+| Key Parameter Configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Invalid Object Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| User Security Audit | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Top SQL / Slow Queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Master-Slave Replication / Data Guard | ✅ | ✅ | — | — | — | ✅ | ✅ |
+| RAC Cluster Information | — | — | ✅ | — | — | — | — |
+| ASM Disk Groups | — | — | ✅ | — | — | — | — |
+| Undo Tablespace Management | — | — | ✅ | — | ✅ | — | — |
+| Recycle Bin / Flashback Recovery Area | — | — | ✅ | — | ✅ | — | — |
+| Profile Password Policy | — | — | ✅ | — | — | — | — |
+| Top Wait Events | — | — | ✅ | ✅ | ✅ | — | — |
+| Locks and Blocking Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Stale Statistics Detection | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Partitioned Table Information | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Datafile Status | — | — | ✅ | ✅ | ✅ | — | — |
+| DM8 Buffer Pool Details | — | — | — | — | ✅ | — | — |
+| Placement & Affinity Policy | — | — | — | — | — | ✅ | ✅ |
 
 > **IvorySQL**: PG-compatible, reuses PG inspection engine. All checkmarks are identical to PostgreSQL. Default port: 5432. Dependencies: `psycopg2-binary` (same as PG).
 
@@ -306,33 +306,6 @@ http://localhost:5003/share/{share_id}
 | Permission Isolation | Share links can only view current report, no access to other pages |
 | Access Statistics | Automatically record link visit count |
 | Delete Anytime | Support deleting shared links, immediately invalid |
-
-| Dimension | MySQL | PostgreSQL | Oracle | SQL Server | DM8 | TiDB | IvorySQL |
-|-----------|:-----:|:----------:|:------:|:-----------:|:---:|:----:|:---------:|
-| Basic Info (version / instance / database) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Session and Connection Status | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Memory and Cache Configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Tablespace Usage | — | — | ✅ | ✅ | ✅ | — |
-| SGA / PGA Memory Analysis | — | — | ✅ | — | ✅ | — |
-| Redo Log Status | — | — | ✅ | — | ✅ | — |
-| Archiving and Backup Checks | — | — | ✅ | ✅ | ✅ | — |
-| Key Parameter Configuration | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Invalid Object Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| User Security Audit | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Top SQL / Slow Queries | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Master-Slave Replication / Data Guard | ✅ | ✅ | — | — | — | ✅ |
-| RAC Cluster Information | — | — | ✅ | — | — | — |
-| ASM Disk Groups | — | — | ✅ | — | — | — |
-| Undo Tablespace Management | — | — | ✅ | — | ✅ | — |
-| Recycle Bin / Flashback Recovery Area | — | — | ✅ | — | ✅ | — |
-| Profile Password Policy | — | — | ✅ | — | — | — |
-| Top Wait Events | — | — | ✅ | ✅ | ✅ | — |
-| Locks and Blocking Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Stale Statistics Detection | — | — | ✅ | ✅ | ✅ | ✅ |
-| Partitioned Table Information | — | — | ✅ | ✅ | ✅ | ✅ |
-| Datafile Status | — | — | ✅ | ✅ | ✅ | — |
-| DM8 Buffer Pool Details | — | — | — | — | ✅ | — |
-| Placement & Affinity Policy | — | — | — | — | — | ✅ |
 
 ### Datasource Management 🗄️
 
@@ -1334,6 +1307,8 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
 ![Share Management](snapshot/share_management.png)
 *Fig. 16: Share management page*
 
+![Share View](snapshot/share_view.png)
+*Fig. 17: Share view page*
 ---
 
 ## Acknowledgments

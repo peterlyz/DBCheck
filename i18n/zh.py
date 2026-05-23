@@ -171,6 +171,25 @@ ZI = {
     "report.data_missing": "数据缺失",
     "report.running_ok": "运行良好",
     "report.no_data": "无数据",
+    # PG 智能分析 issue 翻译
+    "report.pg_issue_conn_usage_high": "连接数使用率过高",
+    "report.pg_issue_cache_hit_low": "缓存命中率过低",
+    "report.pg_issue_shared_buffers_small": "shared_buffers 设置偏小",
+    "report.pg_issue_long_query": "存在长时间运行的查询",
+    "report.pg_issue_lock_wait": "存在锁等待",
+    "report.pg_issue_xid_age_high": "数据库年龄过大",
+    "report.pg_issue_xid_age_mid": "数据库年龄偏大",
+    "report.pg_issue_pg_stat_statements_off": "pg_stat_statements 未启用",
+    "report.pg_issue_invalid_indexes": "存在无效索引",
+    "report.pg_issue_superuser_any": "存在过多超级用户",
+    "report.pg_issue_archive_mode_off": "归档模式未启用",
+    "report.pg_issue_disk_usage_high": "磁盘使用率过高",
+    "report.pg_issue_disk_warning": "磁盘使用率偏高",
+    "report.pg_issue_mem_usage_high": "内存使用率过高",
+    "report.pg_issue_dead_tuples": "存在死元组",
+    "report.pg_issue_slow_query_high_latency": "慢查询延迟过高",
+    "report.pg_issue_slow_query_high_io": "慢查询 IO 过高",
+    "report.pg_issue_long_running_sql": "存在长时间运行的 SQL",
 
 
     # Web UI - 页面
@@ -291,6 +310,7 @@ ZI = {
     "webui.log_connecting": "[{ts}] 连接 {host}:{port}...",
     "webui.log_connected": "[{ts}] ✅ 连接成功: {ver}",
     "webui.log_executing_sql": "[{ts}] 📊 开始执行巡检 SQL...",
+    "webui.log_analyzing": "[{ts}] 📊 开始智能分析...",
     "webui.log_oracle_inspecting": "[{ts}] 📊 开始 Oracle 全面巡检（OS层+数据库层）...",
     "webui.log_dm_analyzing": "[{ts}] 📊 执行增强智能分析...",
     "webui.log_ai_done": "[{ts}] 🤖 AI 诊断完成",

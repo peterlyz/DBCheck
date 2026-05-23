@@ -317,7 +317,6 @@ def run_mysql_task(task_id, db_info, inspector_name):
         if db_info.get('ssh_host'):
             ssh_info = {k: db_info[k] for k in ('ssh_host','ssh_port','ssh_user','ssh_password','ssh_key_file') if k in db_info}
 
-        _emit('log', {'msg': _t('webui.log_executing_sql').format(ts=_ts())})
         data = mod.getData(db_info['ip'], db_info['port'], db_info['user'], db_info['password'], ssh_info)
         if data is None or data.conn_db2 is None:
             raise RuntimeError(_t('webui.err_getdata_none'))
@@ -333,7 +332,6 @@ def run_mysql_task(task_id, db_info, inspector_name):
                 _emit('log', {'msg': _msg_clean})
             _orig_mysql_print(*_a, **_kw)
         _bi.print = _web_mysql_print
-        _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
         _emit('inspection_step', {'step': 2, 'msg': _t('webui.log_analyzing').format(ts=_ts())})
         try:
             ret = data.checkdb('builtin')
@@ -1272,7 +1270,6 @@ def run_tidb_task(task_id, db_info, inspector_name):
         if db_info.get('ssh_host'):
             ssh_info = {k: db_info[k] for k in ('ssh_host','ssh_port','ssh_user','ssh_password','ssh_key_file') if k in db_info}
 
-        _emit('log', {'msg': _t('webui.log_executing_sql').format(ts=_ts())})
         data = mod.getData(db_info['ip'], db_info['port'], db_info['user'], db_info['password'], ssh_info)
         if data is None or data.conn_db2 is None:
             raise RuntimeError(_t('webui.err_getdata_none'))
