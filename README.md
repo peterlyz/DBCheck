@@ -89,28 +89,6 @@ Leveraging a fully offline, local **Ollama** deployment, DBCheck analyzes inspec
 
 Each risk is presented as a card: **Risk Level (High/Medium/Low) → Issue Description → Remediation SQL (copy-paste ready) → Priority & Owner**. The report automatically aggregates all findings so you can see every pending item at a glance.
 
-| Dimension | MySQL | PostgreSQL | Oracle | SQL Server | DM8 | TiDB | IvorySQL |
-|-----------|:-----:|:----------:|:------:|:-----------:|:---:|:----:|:---------:|
-| Connection Resources | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Cache Performance | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Query Efficiency | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Logs and Alerts | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Security Audit | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Replication / DG | ✅ | ✅ | — | — | — | ✅ |
-| Configuration Tuning | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Tablespaces | — | — | ✅ | ✅ | ✅ | — |
-| SGA / PGA Memory | — | — | ✅ | — | ✅ | — |
-| Redo Logs | — | — | ✅ | — | ✅ | — |
-| Backup and Archiving | — | — | ✅ | ✅ | ✅ | — |
-| RAC Cluster | — | — | ✅ | — | — | — |
-| ASM Disk Groups | — | — | ✅ | — | — | — |
-| Undo Management | — | — | ✅ | — | ✅ | — |
-| Data Guard | — | — | ✅ | — | — | — |
-| Wait Events | — | — | ✅ | ✅ | ✅ | — |
-| Locks and Blocking | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| DM8-Specific Views | — | — | — | — | ✅ | — |
-| Placement & Affinity | — | — | — | — | — | ✅ |
-
 ---
 
 ## Six Core Capabilities
@@ -275,10 +253,10 @@ http://localhost:5003/share/{share_id}
 | Top Wait Events | — | — | ✅ | ✅ | ✅ | — | — |
 | Locks and Blocking Detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Stale Statistics Detection | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Partitioned Table Information | — | — | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Partitioned Table Information | — | — | ✅ | ✅ | ✅ | ✅ | — |
 | Datafile Status | — | — | ✅ | ✅ | ✅ | — | — |
 | DM8 Buffer Pool Details | — | — | — | — | ✅ | — | — |
-| Placement & Affinity Policy | — | — | — | — | — | ✅ | ✅ |
+| Placement & Affinity Policy | — | — | — | — | — | ✅ | — |
 
 > **IvorySQL**: PG-compatible, reuses PG inspection engine. All checkmarks are identical to PostgreSQL. Default port: 5432. Dependencies: `psycopg2-binary` (same as PG).
 
