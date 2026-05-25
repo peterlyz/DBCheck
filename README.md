@@ -1304,7 +1304,7 @@ Some features are still undergoing rapid iteration, and more database types will
 
 DBCheck has undergone extensive iteration and real-world testing to reach its current state. If this tool has been helpful to you, consider supporting the project's continued development:
 
-<img src="snapshot/pay-en.png" alt="PayPal donation QR code" width="500" />
+<img src="snapshot/pay-en_gray.png" alt="PayPal donation QR code" width="500" />
 
 > When donating, please include your name or nickname so we know who supports us ❤️
 > 
