@@ -7,6 +7,7 @@
 let currentInspectionTemplateId = null;
 let currentInspectionChapterId = null;
 let inspectionQueryUnsaved = false;  // 查询内联编辑是否有未保存内容
+let currentInspectionIsPreset = false;  // 当前编辑的模板是否为预置模板
 
 
 // ==================== 页面初始化 ====================
@@ -40,6 +41,7 @@ async function showInspectionTemplateList() {
     if (editPage) editPage.style.display = 'none';
     currentInspectionChapterId = null;
     inspectionQueryUnsaved = false;
+    currentInspectionIsPreset = false;
     loadInspectionTemplates();
 }
 
@@ -75,12 +77,14 @@ function renderInspectionTemplateList(templates) {
         };
         const dbTypeLabel = dbTypeMap[t.db_type] || t.db_type;
         const isDefault = t.is_default ? ' ✔️ 默认' : '';
+        const isPreset = t.is_preset == 1;
+        const presetLabel = isPreset ? '<span class="preset-badge">预置</span>' : '';
         const versionLabel = t.version ? `[${escapeHtml(t.version)}]` : '';
         html += `
-        <div class="inspection-template-card" onclick="editInspectionTemplate(${t.id})">
+        <div class="inspection-template-card${isPreset ? ' inspection-template-card--preset' : ''}" onclick="editInspectionTemplate(${t.id})">
             <div class="card-header">
                 <h3>${escapeHtml(t.template_name)}${versionLabel}${isDefault}</h3>
-                <span class="db-type-badge">${dbTypeLabel}</span>
+                <span>${presetLabel}<span class="db-type-badge">${dbTypeLabel}</span></span>
             </div>
             <div class="card-body">
                 ${t.description ? `<p class="card-desc">${escapeHtml(t.description)}</p>` : ''}
@@ -91,7 +95,7 @@ function renderInspectionTemplateList(templates) {
             </div>
             <div class="card-footer">
                 <button class="btn btn-xs btn-ghost" onclick="event.stopPropagation(); exportInspectionTemplate(${t.id})">导出</button>
-                <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); deleteInspectionTemplate(${t.id}, '${escapeHtml(t.template_name)}')">删除</button>
+                ${!isPreset ? `<button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); deleteInspectionTemplate(${t.id}, '${escapeHtml(t.template_name)}')">删除</button>` : ''}
             </div>
         </div>`;
     });
@@ -135,9 +139,18 @@ function fillInspectionTemplateEditForm(template) {
     const versionEl = document.getElementById('inspection-edit-version');
     const descEl = document.getElementById('inspection-edit-desc');
     const defaultEl = document.getElementById('inspection-edit-default');
+    currentInspectionIsPreset = template.is_preset == 1;
     if (dbTypeEl) dbTypeEl.value = template.db_type || '';
-    if (nameEl) nameEl.value = template.template_name || '';
-    if (versionEl) versionEl.value = template.version || 'v1';
+    if (nameEl) {
+        nameEl.value = template.template_name || '';
+        nameEl.readOnly = currentInspectionIsPreset;
+        nameEl.disabled = currentInspectionIsPreset;
+    }
+    if (versionEl) {
+        versionEl.value = template.version || 'v1';
+        versionEl.readOnly = currentInspectionIsPreset;
+        versionEl.disabled = currentInspectionIsPreset;
+    }
     if (descEl) descEl.value = template.description || '';
     if (defaultEl) defaultEl.checked = template.is_default == 1;
 }
@@ -149,10 +162,11 @@ function clearInspectionTemplateEditForm() {
     const descEl = document.getElementById('inspection-edit-desc');
     const defaultEl = document.getElementById('inspection-edit-default');
     if (dbTypeEl) dbTypeEl.value = '';
-    if (nameEl) nameEl.value = '';
-    if (versionEl) versionEl.value = 'v1';
+    if (nameEl) { nameEl.value = ''; nameEl.readOnly = false; nameEl.disabled = false; }
+    if (versionEl) { versionEl.value = 'v1'; versionEl.readOnly = false; versionEl.disabled = false; }
     if (descEl) descEl.value = '';
     if (defaultEl) defaultEl.checked = false;
+    currentInspectionIsPreset = false;
     const chapterList = document.getElementById('inspection-chapter-list');
     if (chapterList) chapterList.innerHTML = '<div class="empty-state">暂无章节，请点击顶部"添加章节"按钮添加。</div>';
     clearInspectionChapterDetail();

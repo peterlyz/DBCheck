@@ -3363,18 +3363,19 @@ def init_default_templates(db_path: str = None, force: bool = False):
     print("开始初始化默认模板...")
 
     # 定义所有数据库类型的默认配置
+    # 格式: (db_type, template_name_zh, template_name_en, chapters, version, is_default, is_preset)
     db_types = [
-        ('mysql',     'MySQL 默认巡检模板',        'MySQL Default Inspection Template',        MYSQL_DEFAULT_CHAPTERS,        'v1', 1),
-        ('postgresql', 'PostgreSQL 默认巡检模板',   'PostgreSQL Default Inspection Template',   POSTGRESQL_DEFAULT_CHAPTERS,   'v1', 1),
-        ('oracle',     'Oracle 默认巡检模板',        'Oracle Default Inspection Template',         ORACLE_DEFAULT_CHAPTERS,         'v1', 1),
-        ('oracle',     'Oracle 11g 巡检模板',        'Oracle 11g Inspection Template',             ORACLE_11G_CHAPTERS,             '11g', 0),
-        ('sqlserver',  'SQL Server 默认巡检模板',    'SQL Server Default Inspection Template',    SQLSERVER_DEFAULT_CHAPTERS,    'v1', 1),
-        ('dm8',       'DM8 达梦默认巡检模板',      'DM8 Default Inspection Template',          DM8_DEFAULT_CHAPTERS,          'v1', 1),
-        ('tidb',      'TiDB 默认巡检模板',          'TiDB Default Inspection Template',          TIDB_DEFAULT_CHAPTERS,          'v1', 1),
-        ('ivorysql',  'IvorySQL 默认巡检模板',    'IvorySQL Default Inspection Template',    IVORYSQL_DEFAULT_CHAPTERS,    'v1', 1),
+        ('mysql',     'MySQL 默认巡检模板',        'MySQL Default Inspection Template',        MYSQL_DEFAULT_CHAPTERS,        'v1', 1, 1),
+        ('postgresql', 'PostgreSQL 默认巡检模板',   'PostgreSQL Default Inspection Template',   POSTGRESQL_DEFAULT_CHAPTERS,   'v1', 1, 1),
+        ('oracle',     'Oracle 默认巡检模板',        'Oracle Default Inspection Template',         ORACLE_DEFAULT_CHAPTERS,         'v1', 1, 1),
+        ('oracle',     'Oracle 11g 巡检模板',        'Oracle 11g Inspection Template',             ORACLE_11G_CHAPTERS,             '11g', 0, 1),
+        ('sqlserver',  'SQL Server 默认巡检模板',    'SQL Server Default Inspection Template',    SQLSERVER_DEFAULT_CHAPTERS,    'v1', 1, 1),
+        ('dm8',       'DM8 达梦默认巡检模板',      'DM8 Default Inspection Template',          DM8_DEFAULT_CHAPTERS,          'v1', 1, 1),
+        ('tidb',      'TiDB 默认巡检模板',          'TiDB Default Inspection Template',          TIDB_DEFAULT_CHAPTERS,          'v1', 1, 1),
+        ('ivorysql',  'IvorySQL 默认巡检模板',    'IvorySQL Default Inspection Template',    IVORYSQL_DEFAULT_CHAPTERS,    'v1', 1, 1),
     ]
 
-    for db_type, template_name, template_name_en, chapters, version, is_default in db_types:
+    for db_type, template_name, template_name_en, chapters, version, is_default, is_preset in db_types:
         # 检查是否已存在
         from inspection_dal import get_all_templates as _get_all_templates
         existing = None
@@ -3395,7 +3396,7 @@ def init_default_templates(db_path: str = None, force: bool = False):
         if existing and force:
             print(f"🗑️  强制重新初始化，删除 {template_name}（ID: {existing['id']}）")
             from inspection_dal import delete_template
-            delete_template(existing['id'], db_path)
+            delete_template(existing['id'], db_path, force=True)
 
         # 创建模板
         tmpl_label = f"{db_type} {template_name}"
@@ -3407,6 +3408,7 @@ def init_default_templates(db_path: str = None, force: bool = False):
             description=f'{db_type.upper()} 数据库巡检模板（预置常用巡检 SQL，共 {len(chapters)} 章）',
             version=version,
             is_default=is_default,
+            is_preset=is_preset,
             db_path=db_path
         )
         print(f"   ✅ 模板创建成功（ID: {template_id}）")

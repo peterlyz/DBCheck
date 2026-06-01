@@ -9097,7 +9097,7 @@ async function executeFixSql(taskId, sql) {
     background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
   }
   [data-theme="light"] #login-overlay {
-    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 50%, #dee2e6 100%);
+    background: linear-gradient(135deg, #e0e7ff 0%, #f0e6ff 40%, #fce7f3 100%);
   }
   #login-overlay .login-card {
     background: rgba(255,255,255,0.05);
@@ -9108,8 +9108,10 @@ async function executeFixSql(taskId, sql) {
     backdrop-filter: blur(10px);
   }
   [data-theme="light"] #login-overlay .login-card {
-    background: rgba(0,0,0,0.03);
-    border: 1px solid rgba(0,0,0,0.08);
+    background: rgba(255,255,255,0.85);
+    border: 1px solid rgba(255,255,255,0.8);
+    box-shadow: 0 20px 60px rgba(108,92,231,0.12), 0 4px 16px rgba(0,0,0,0.06);
+    backdrop-filter: blur(20px);
   }
   #login-overlay .login-label {
     text-align: left;
@@ -9118,7 +9120,9 @@ async function executeFixSql(taskId, sql) {
     margin-bottom: 4px;
   }
   [data-theme="light"] #login-overlay .login-label {
-    color: rgba(0,0,0,0.5);
+    color: #64748b;
+    font-weight: 600;
+    letter-spacing: 0.5px;
   }
   #login-overlay .login-input {
     width: 100%;
@@ -9133,9 +9137,9 @@ async function executeFixSql(taskId, sql) {
     transition: border-color 0.2s;
   }
   [data-theme="light"] #login-overlay .login-input {
-    background: rgba(0,0,0,0.03);
-    border: 1px solid rgba(0,0,0,0.12);
-    color: #1f2328;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    color: #1e293b;
   }
   #login-overlay .login-btn {
     width: 100%;
@@ -9150,26 +9154,62 @@ async function executeFixSql(taskId, sql) {
     transition: transform 0.15s, box-shadow 0.15s;
   }
 </style>
+<style>
+  #login-overlay .login-title {
+    font-size:32px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:4px;
+  }
+  [data-theme="light"] #login-overlay .login-title {
+    color: #1e293b;
+  }
+  #login-overlay .login-subtitle {
+    font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:16px;
+  }
+  [data-theme="light"] #login-overlay .login-subtitle {
+    color: #64748b;
+  }
+  #login-overlay .login-field-input {
+    width:100%;padding:11px 14px;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.15);
+    border-radius:10px;color:#fff;
+    font-size:14px;box-sizing:border-box;outline:none;
+    transition:border-color 0.2s, box-shadow 0.2s;
+  }
+  [data-theme="light"] #login-overlay .login-field-input {
+    background:#f8fafc;
+    border:1px solid #e2e8f0;
+    color:#1e293b;
+  }
+  [data-theme="light"] #login-overlay .login-field-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,92,231,0.1);
+  }
+  #login-overlay .login-field-input:focus {
+    border-color: var(--accent);
+  }
+</style>
 <!-- 登录遮罩 -->
 <div id="login-overlay" style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:20vh;">
   <div style="text-align:center;animation:fadeInUp 0.6s ease;">
     <!-- Logo -->
-    <img src="/dbcheck_logo.png" style="width:80px;height:80px;margin:0 auto 8px;border-radius:18px;box-shadow:0 8px 32px rgba(108,92,231,0.3);" alt="DBCheck">
+    <img src="/dbcheck_logo.png" class="login-logo" style="width:80px;height:80px;margin:0 auto 8px;border-radius:18px;box-shadow:0 8px 32px rgba(108,92,231,0.3);" alt="DBCheck">
     <!-- Title -->
-    <div style="font-size:32px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:4px;" data-i18n="webui.login_title">DBCheck</div>
-    <div style="font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:16px;" data-i18n="webui.login_subtitle">数据库智能巡检工具</div>
+    <div class="login-title" data-i18n="webui.login_title">DBCheck</div>
+    <div class="login-subtitle" data-i18n="webui.login_subtitle">数据库智能巡检工具</div>
     <!-- Form card -->
     <div class="login-card">
       <div style="margin-bottom:14px;">
         <div class="login-label" data-i18n="webui.login_username">用户名</div>
-        <input id="login-user" type="text" placeholder="请输入用户名" data-i18n-placeholder="webui.login_username_placeholder" style="width:100%;padding:11px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#fff;font-size:14px;box-sizing:border-box;outline:none;transition:border-color 0.2s;" autocomplete="username" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='rgba(255,255,255,0.15)'">
+        <input id="login-user" type="text" class="login-field-input" placeholder="请输入用户名" data-i18n-placeholder="webui.login_username_placeholder" autocomplete="username">
       </div>
       <div style="margin-bottom:6px;">
         <div class="login-label" data-i18n="webui.login_password">密码</div>
-        <input id="login-pass" type="password" placeholder="请输入密码" data-i18n-placeholder="webui.login_password_placeholder" style="width:100%;padding:11px 14px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#fff;font-size:14px;box-sizing:border-box;outline:none;transition:border-color 0.2s;" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='rgba(255,255,255,0.15)'">
+        <input id="login-pass" type="password" class="login-field-input" placeholder="请输入密码" data-i18n-placeholder="webui.login_password_placeholder" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
       </div>
       <div id="login-error" style="color:#ff6b6b;font-size:12px;margin-bottom:14px;min-height:18px;text-align:left;display:none;"></div>
-      <button id="btn-login" style="width:100%;padding:12px;background:linear-gradient(135deg, var(--accent), #6c5ce7);border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:600;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;" onmouseover="this.style.transform='scale(1.02)';this.style.boxShadow='0 4px 16px rgba(108,92,231,0.4)'" onmouseout="this.style.transform='';this.style.boxShadow=''" data-i18n="webui.login_btn">
+      <button id="btn-login" class="login-btn" data-i18n="webui.login_btn"
+        onmouseover="this.style.transform='scale(1.02)';this.style.boxShadow='0 4px 16px rgba(108,92,231,0.4)'"
+        onmouseout="this.style.transform='';this.style.boxShadow=''">
         登 录
       </button>
     </div>

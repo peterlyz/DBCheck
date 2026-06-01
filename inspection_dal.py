@@ -66,6 +66,7 @@ def init_database(db_path: str = None):
                 version VARCHAR(50) DEFAULT 'v1',
                 description TEXT,
                 is_default INTEGER DEFAULT 0,
+                is_preset INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(db_type, template_name_zh)
@@ -155,6 +156,14 @@ def init_database(db_path: str = None):
         if 'version' not in columns:
             cursor.execute("ALTER TABLE inspection_template ADD COLUMN version VARCHAR(50) DEFAULT 'v1'")
             print("🔄 已为 inspection_template 表添加 version 字段")
+        if 'is_preset' not in columns:
+            cursor.execute("ALTER TABLE inspection_template ADD COLUMN is_preset INTEGER DEFAULT 0")
+            print("🔄 已为 inspection_template 表添加 is_preset 字段")
+            # 将已有的默认模板标记为预置模板
+            cursor.execute("UPDATE inspection_template SET is_preset = 1 WHERE is_default = 1")
+            # Oracle 11g 模板也是预置模板（is_default=0 但同样不可删除）
+            cursor.execute("UPDATE inspection_template SET is_preset = 1 WHERE db_type = 'oracle' AND version = '11g'")
+            conn.commit()
 
         conn.commit()
         print("✅ 数据库初始化成功")
@@ -170,7 +179,7 @@ def init_database(db_path: str = None):
 # ==================== 巡检模板操作 ====================
 
 def create_template(db_type: str, template_name: str, description: str = None,
-                   template_name_en: str = None, version: str = 'v1', is_default: int = 0, db_path: str = None) -> int:
+                   template_name_en: str = None, version: str = 'v1', is_default: int = 0, is_preset: int = 0, db_path: str = None) -> int:
     """
     创建新的巡检模板。
 
@@ -180,6 +189,7 @@ def create_template(db_type: str, template_name: str, description: str = None,
     :param template_name_en: 模板英文名称
     :param version: 模板版本号（默认 'v1'）
     :param is_default: 是否默认模板（0=否，1=是）
+    :param is_preset: 是否预置模板（0=否，1=是）
     :param db_path: 数据库文件路径
     :return: 新创建的模板 ID
     """
@@ -189,14 +199,14 @@ def create_template(db_type: str, template_name: str, description: str = None,
     try:
         if template_name_en:
             cursor.execute("""
-                INSERT INTO inspection_template (db_type, template_name_zh, template_name_en, version, description, is_default)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (db_type, template_name, template_name_en, version, description, is_default))
+                INSERT INTO inspection_template (db_type, template_name_zh, template_name_en, version, description, is_default, is_preset)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (db_type, template_name, template_name_en, version, description, is_default, is_preset))
         else:
             cursor.execute("""
-                INSERT INTO inspection_template (db_type, template_name_zh, version, description, is_default)
-                VALUES (?, ?, ?, ?, ?)
-            """, (db_type, template_name, version, description, is_default))
+                INSERT INTO inspection_template (db_type, template_name_zh, version, description, is_default, is_preset)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (db_type, template_name, version, description, is_default, is_preset))
         
         template_id = cursor.lastrowid
         conn.commit()
@@ -235,6 +245,7 @@ def get_template(template_id: int, db_path: str = None) -> Optional[Dict]:
                    version,
                    description,
                    is_default,
+                   is_preset,
                    created_at,
                    updated_at
             FROM inspection_template
@@ -268,6 +279,7 @@ def get_all_templates(db_path: str = None) -> List[Dict]:
                    t.db_type,
                    t.version,
                    t.is_default,
+                   t.is_preset,
                    t.created_at,
                    COUNT(DISTINCT c.id) as chapter_count,
                    COUNT(DISTINCT q.id) as query_count
@@ -304,6 +316,7 @@ def get_templates_by_db_type(db_type: str, db_path: str = None) -> List[Dict]:
                    version,
                    description,
                    is_default,
+                   is_preset,
                    created_at,
                    updated_at
             FROM inspection_template
@@ -337,6 +350,7 @@ def get_default_template(db_type: str, db_path: str = None) -> Optional[Dict]:
                    version,
                    description,
                    is_default,
+                   is_preset,
                    created_at,
                    updated_at
             FROM inspection_template
@@ -358,6 +372,7 @@ def update_template(template_id: int, template_name: str = None,
                    db_path: str = None) -> bool:
     """
     更新巡检模板。
+    预置模板（is_preset=1）不能修改模板名称和版本号。
 
     :param template_id: 模板 ID
     :param template_name: 新的模板名称（如果为 None，则不更新）
@@ -365,11 +380,11 @@ def update_template(template_id: int, template_name: str = None,
     :param description: 新的模板描述（如果为 None，则不更新）
     :param is_default: 是否默认模板（如果为 None，则不更新）
     :param db_path: 数据库文件路径
-    :return: 是否更新成功
+    :return: 是否更新成功；预置模板改标题/版本时返回 False
     """
     conn = get_db_connection(db_path)
     cursor = conn.cursor()
-    
+
     try:
         # 获取旧值
         cursor.execute("""
@@ -380,6 +395,7 @@ def update_template(template_id: int, template_name: str = None,
                    version,
                    description,
                    is_default,
+                   is_preset,
                    created_at,
                    updated_at
             FROM inspection_template
@@ -390,6 +406,12 @@ def update_template(template_id: int, template_name: str = None,
             return False
 
         old_value = dict(old_row)
+        is_preset = old_value.get('is_preset', 0)
+
+        # 预置模板不能修改名称和版本
+        if is_preset == 1:
+            if template_name is not None or version is not None:
+                return False
 
         # 构建更新语句
         updates = []
@@ -454,17 +476,19 @@ def update_template(template_id: int, template_name: str = None,
         conn.close()
 
 
-def delete_template(template_id: int, db_path: str = None) -> bool:
+def delete_template(template_id: int, db_path: str = None, force: bool = False) -> bool:
     """
     删除巡检模板（由于外键约束，相关的章节和查询也会被删除）。
-    
+    预置模板（is_preset=1）不能删除，除非 force=True。
+
     :param template_id: 模板 ID
     :param db_path: 数据库文件路径
-    :return: 是否删除成功
+    :param force: 强制删除（用于 --force 重新初始化）
+    :return: 是否删除成功，预置模板且非 force 时返回 False
     """
     conn = get_db_connection(db_path)
     cursor = conn.cursor()
-    
+
     try:
         # 获取旧值
         cursor.execute("""
@@ -475,6 +499,7 @@ def delete_template(template_id: int, db_path: str = None) -> bool:
                    version,
                    description,
                    is_default,
+                   is_preset,
                    created_at,
                    updated_at
             FROM inspection_template
@@ -486,16 +511,20 @@ def delete_template(template_id: int, db_path: str = None) -> bool:
 
         old_value = dict(old_row)
 
+        # 预置模板不能删除（force 模式除外，用于 --force 重新初始化）
+        if old_value.get('is_preset', 0) == 1 and not force:
+            return False
+
         # 记录历史（先记录，再删除）
         _record_history(cursor, 'inspection_template', template_id, 'DELETE',
                        old_value, None)
-        
+
         # 删除模板（由于外键约束，相关的章节和查询也会被删除）
         cursor.execute("DELETE FROM inspection_template WHERE id = ?", (template_id,))
-        
+
         conn.commit()
         return True
-        
+
     except Exception as e:
         conn.rollback()
         raise e

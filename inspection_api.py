@@ -197,6 +197,14 @@ def api_update_template(template_id):
         description = data.get('description')
         is_default = data.get('is_default')
         
+        # 预置模板不允许修改名称
+        template = get_template(template_id)
+        if template and template.get('is_preset', 0) == 1 and template_name is not None:
+            return jsonify({
+                'success': False,
+                'message': '预置模板不能修改名称'
+            }), 403
+        
         success = update_template(
             template_id=template_id,
             template_name=template_name,
@@ -227,11 +235,20 @@ def api_update_template(template_id):
 def api_delete_template(template_id):
     """
     删除巡检模板（由于外键约束，相关的章节和查询也会被删除）。
+    预置模板不能删除。
     
     :param template_id: 模板 ID
     :return: JSON 响应，表示删除是否成功
     """
     try:
+        # 预置模板不允许删除
+        template = get_template(template_id)
+        if template and template.get('is_preset', 0) == 1:
+            return jsonify({
+                'success': False,
+                'message': '预置模板不能删除'
+            }), 403
+        
         success = delete_template(template_id)
         
         if not success:
