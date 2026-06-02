@@ -2760,6 +2760,169 @@ def api_rag_delete_document(doc_id):
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
+# ═══════════════════════════════════════════════════════════
+#  实时监控 API
+# ═══════════════════════════════════════════════════════════
+
+@app.route('/api/monitor/slow-queries', methods=['GET'])
+def api_monitor_slow_queries():
+    """获取各数据源慢查询数据"""
+    try:
+        from monitor_engine import get_monitor_engine
+        engine = get_monitor_engine()
+        data = engine.get_slow_queries()
+        # 转换为列表格式方便前端展示
+        items = []
+        for iid, d in data.items():
+            for row in d.get('data', []):
+                items.append({
+                    'instance_id': iid,
+                    'source': d.get('label', iid),
+                    'label': d.get('label', iid),
+                    'db_type': d.get('db_type', ''),
+                    'error': d.get('error'),
+                    'ts': d.get('ts', 0),
+                    **row,
+                })
+        return jsonify({'ok': True, 'items': items, 'status': engine.get_status()})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+@app.route('/api/monitor/connections', methods=['GET'])
+def api_monitor_connections():
+    """获取各数据源连接数据"""
+    try:
+        from monitor_engine import get_monitor_engine
+        engine = get_monitor_engine()
+        data = engine.get_connections()
+        items = []
+        for iid, d in data.items():
+            items.append({
+                'instance_id': iid,
+                'source': d.get('label', iid),
+                'label': d.get('label', iid),
+                'db_type': d.get('db_type', ''),
+                'error': d.get('error'),
+                'ts': d.get('ts', 0),
+                'total': d.get('total', 0),
+                'max_conn': d.get('max_conn', 0),
+                'max_connections': d.get('max_conn', 0),
+                'usage_pct': d.get('usage_pct', 0),
+                'connections': d.get('connections', {}),
+                'sessions': d.get('data', []),
+            })
+        return jsonify({'ok': True, 'items': items, 'status': engine.get_status()})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+@app.route('/api/monitor/history', methods=['GET'])
+def api_monitor_history():
+    """获取连接数历史记录（用于热力图）"""
+    try:
+        from monitor_engine import get_monitor_engine
+        engine = get_monitor_engine()
+        raw_history = engine.get_conn_history()
+        # 后端格式: [{ts, instances: [{id, label, total, max_conn, db_type}]}, ...]
+        # 前端期望: [{source, history: [{timestamp, active, total, max_conn, db_type}]}, ...]
+        if not raw_history:
+            return jsonify({'ok': True, 'history': []})
+        # 获取所有数据源（按最新快照的顺序）
+        latest = raw_history[-1]
+        source_order = []
+        source_map = {}
+        for inst in latest.get('instances', []):
+            src = inst.get('label', inst.get('id', '?'))
+            if src not in source_map:
+                source_order.append(src)
+                source_map[src] = {'db_type': inst.get('db_type', ''), 'max_conn': inst.get('max_conn', 0)}
+        # 按数据源聚合
+        result = []
+        for src in source_order:
+            hist_entries = []
+            for snapshot in raw_history:
+                ts = snapshot.get('ts', 0)
+                # 在该时间戳找到对应数据源
+                found = None
+                for inst in snapshot.get('instances', []):
+                    if inst.get('label', inst.get('id', '?')) == src:
+                        found = inst
+                        break
+                if found:
+                    total = found.get('total', 0)
+                    hist_entries.append({
+                        'timestamp': ts,
+                        'active': total,
+                        'total': total,
+                        'max_conn': found.get('max_conn', 0),
+                    })
+                elif not found and hist_entries:
+                    # 数据源已消失，补 null
+                    hist_entries.append({'timestamp': ts, 'active': None, 'total': None, 'max_conn': 0})
+            result.append({
+                'source': src,
+                'db_type': source_map[src]['db_type'],
+                'history': hist_entries,
+            })
+        return jsonify({'ok': True, 'history': result})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
+@app.route('/api/monitor/debug', methods=['GET'])
+def api_monitor_debug():
+    """调试：查看监控引擎内部原始数据"""
+    try:
+        from monitor_engine import get_monitor_engine
+        engine = get_monitor_engine()
+        slow = engine.get_slow_queries()
+        conn = engine.get_connections()
+        status = engine.get_status()
+        # 精简输出，只看关键字段
+        slow_summary = {}
+        for iid, d in slow.items():
+            slow_summary[iid] = {
+                'label': d.get('label'),
+                'error': d.get('error'),
+                'data_count': len(d.get('data', [])),
+                'ts': d.get('ts', 0),
+            }
+        conn_summary = {}
+        for iid, d in conn.items():
+            conn_summary[iid] = {
+                'label': d.get('label'),
+                'error': d.get('error'),
+                'total': d.get('total', 0),
+                'max_conn': d.get('max_conn', 0),
+                'data_count': len(d.get('data', [])),
+            }
+        return jsonify({'ok': True, 'status': status, 'slow': slow_summary, 'conn': conn_summary})
+    except Exception as e:
+        import traceback
+        return jsonify({'ok': False, 'error': str(e), 'traceback': traceback.format_exc()})
+
+
+@app.route('/api/monitor/config', methods=['POST'])
+def api_monitor_config():
+    """配置监控（启动/停止/修改间隔）"""
+    try:
+        from monitor_engine import get_monitor_engine
+        engine = get_monitor_engine()
+        body = request.get_json() or {}
+        action = body.get('action')
+        if action == 'start':
+            interval = body.get('interval')
+            engine.start(interval=interval)
+        elif action == 'stop':
+            engine.stop()
+        elif action == 'set_interval':
+            interval = body.get('interval')
+            if interval:
+                engine.set_interval(int(interval))
+        elif action == 'trigger':
+            engine.trigger_collect()
+        return jsonify({'ok': True, 'status': engine.get_status()})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)})
+
 @app.route('/api/rag/ollama-status', methods=['GET'])
 def api_rag_ollama_status():
     """向后兼容：检查当前 Embedding 后端连接状态，同时返回 backend 类型"""
