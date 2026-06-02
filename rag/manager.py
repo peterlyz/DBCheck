@@ -11,6 +11,8 @@ RAG 文档管理器 — 管理文档的完整生命周期
 import os
 import sqlite3
 import json
+import threading
+import uuid
 
 from .vector_store import VectorStore
 from .document_processor import DocumentProcessor
@@ -44,6 +46,9 @@ class RAGManager:
         self.config_path = config_path
         self.embedding = None
         self._ensure_embedding()
+        # 上传进度追踪
+        self._upload_progress = {}
+        self._upload_progress_lock = threading.Lock()
 
     def _ensure_embedding(self):
         """
@@ -274,3 +279,145 @@ class RAGManager:
     def check_ollama_connection(self) -> tuple[bool, str]:
         """向后兼容：调用 check_embedding_connection()"""
         return self.check_embedding_connection()
+
+    # ── 异步上传与进度追踪 ──────────────────────────────────
+
+    def _set_progress(self, task_id: str, **kwargs):
+        """线程安全地更新进度状态"""
+        with self._upload_progress_lock:
+            if task_id in self._upload_progress:
+                self._upload_progress[task_id].update(kwargs)
+
+    def _get_progress(self, task_id: str) -> dict | None:
+        """线程安全地读取进度状态"""
+        with self._upload_progress_lock:
+            prog = self._upload_progress.get(task_id)
+            return dict(prog) if prog else None
+
+    def start_upload(self, file_path: str, db_type: str, title: str = None,
+                     delete_after: bool = False) -> str:
+        """
+        启动异步上传任务，立即返回 task_id
+
+        Args:
+            file_path: 文档文件路径
+            db_type: 数据库类型
+            title: 文档标题
+            delete_after: 处理完成后是否删除源文件（临时文件场景设为 True）
+
+        Returns:
+            task_id: 任务ID，用于查询进度
+        """
+        task_id = str(uuid.uuid4())
+        doc_title = title or os.path.basename(file_path)
+
+        with self._upload_progress_lock:
+            self._upload_progress[task_id] = {
+                'task_id': task_id,
+                'status': 'running',       # running | done | error
+                'stage': '准备中',
+                'progress': 0,             # 0-100
+                'current': 0,
+                'total': 0,
+                'title': doc_title,
+                'error': None,
+                'message': None,
+            }
+
+        def _run():
+            try:
+                self._set_progress(task_id, stage='正在解析文档...', progress=5)
+
+                # 确保使用正确的 embedding 后端
+                self._ensure_embedding()
+
+                # 验证 db_type（用独立变量避免闭包 UnboundLocalError）
+                db_type_norm = db_type.lower()
+                if db_type_norm not in self.DB_TYPES:
+                    raise ValueError(
+                        f"无效的数据库类型: {db_type}，"
+                        f"支持: {', '.join(sorted(self.DB_TYPES))}"
+                    )
+
+                # 验证文件
+                ok, msg = self.processor.validate_file(file_path)
+                if not ok:
+                    raise ValueError(msg)
+
+                # 处理文档：加载 → 分块
+                self._set_progress(task_id, stage='正在解析文档...', progress=10)
+                chunks = self.processor.process_document(file_path, db_type_norm, title)
+                if not chunks:
+                    raise RuntimeError("文档分块结果为空")
+
+                total_chunks = len(chunks)
+                self._set_progress(task_id, total=total_chunks,
+                                   stage=f'正在向量化（0/{total_chunks}）...', progress=15)
+
+                # 向量化 — 逐条处理并更新进度
+                texts = [c['content'] for c in chunks]
+                embeddings = []
+                for i, text in enumerate(texts):
+                    try:
+                        vec = self.embedding.embed_text(text)
+                        embeddings.append(vec)
+                    except RuntimeError:
+                        dim = self.embedding.get_dimension()
+                        embeddings.append([0.0] * dim)
+
+                    # 向量化占 70% 进度 (15% → 85%)
+                    pct = 15 + int((i + 1) / total_chunks * 70)
+                    self._set_progress(task_id, current=i + 1,
+                                       stage=f'正在向量化（{i+1}/{total_chunks}）...',
+                                       progress=pct)
+
+                if len(embeddings) != total_chunks:
+                    raise RuntimeError(
+                        f"向量化结果数量({len(embeddings)})与分块数量({total_chunks})不匹配"
+                    )
+
+                # 存储到向量库
+                self._set_progress(task_id, stage='正在存储向量...', progress=90)
+                self.vector_store.add_documents(chunks, embeddings)
+
+                # 存储元数据
+                doc_id = chunks[0]['metadata']['doc_id']
+                doc_title_actual = title or chunks[0]['metadata']['title']
+                file_size = os.path.getsize(file_path)
+
+                conn = sqlite3.connect(self.db_path)
+                try:
+                    conn.execute("""
+                        INSERT OR REPLACE INTO rag_documents
+                        (doc_id, db_type, title, file_path, file_size, chunk_count, status)
+                        VALUES (?, ?, ?, ?, ?, ?, 'active')
+                    """, (doc_id, db_type_norm, doc_title_actual, os.path.abspath(file_path),
+                          file_size, len(chunks)))
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                message = f"文档「{doc_title_actual}」添加成功，共 {len(chunks)} 个分块，已导入向量库"
+                self._set_progress(task_id, status='done', stage='完成', progress=100,
+                                   message=message)
+
+            except Exception as e:
+                self._set_progress(task_id, status='error', stage='失败',
+                                   error=str(e))
+
+            finally:
+                # 清理临时文件
+                if delete_after:
+                    try:
+                        if os.path.exists(file_path):
+                            os.unlink(file_path)
+                    except OSError:
+                        pass
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return task_id
+
+    def get_upload_progress(self, task_id: str) -> dict | None:
+        """查询上传任务进度"""
+        return self._get_progress(task_id)

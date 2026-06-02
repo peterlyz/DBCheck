@@ -1768,6 +1768,36 @@ async function executeFixSql(taskId, sql) {
 .chat-input::placeholder {
   color: var(--text-muted);
 }
+/* textarea 输入（替代原 input） */
+.chat-textarea {
+  width: 100%;
+  padding: 8px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 13.5px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  line-height: 1.4;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+.chat-textarea:focus {
+  border-color: var(--accent2);
+}
+.chat-textarea::placeholder {
+  color: var(--text-muted);
+}
+.chat-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* 状态栏点击样式 */
+#chat-status-bar[style*="cursor"] {
+  transition: background 0.2s ease;
+}
 .chat-send-btn {
   width: 40px;
   height: 40px;
@@ -2644,32 +2674,85 @@ async function uploadRagDocument() {
   const dbType = document.getElementById('rag-db-type').value;
   const title = document.getElementById('rag-doc-title').value.trim();
   if (!fileInput.files || !fileInput.files[0]) { toastError(i18n('webui.rag_need_file')); return; }
-  const status = document.getElementById('rag-upload-status');
-  status.style.display = 'block';
-  status.style.background = 'var(--surface2)';
-  status.style.color = 'var(--text-muted)';
-  status.textContent = i18n('webui.rag_uploading') || '上传中...';
+
+  const statusWrap = document.getElementById('rag-upload-status');
+  const statusText = document.getElementById('rag-upload-status-text');
+  const progressBar = document.getElementById('rag-upload-progress-bar');
+  const progressPct = document.getElementById('rag-upload-progress-pct');
+
+  // 显示状态区域，重置进度条
+  statusWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  progressBar.style.background = 'var(--accent)';
+  progressPct.textContent = '';
+  statusText.style.background = 'var(--surface2)';
+  statusText.style.color = 'var(--text-muted)';
+  statusText.textContent = i18n('webui.rag_uploading') || '正在上传文件...';
+
   const formData = new FormData();
   formData.append('file', fileInput.files[0]);
   formData.append('db_type', dbType);
   formData.append('title', title);
+
   try {
+    // 第一步：上传文件，获取 task_id
     const res = await fetch('/api/rag/documents', { method: 'POST', body: formData });
     const data = await res.json();
-    if (data.ok) {
-      status.style.background = '#e8f5e9'; status.style.color = '#2e7d32';
-      // 从返回的 message 中解析分块数，如"文档「xxx」添加成功，共 99 个分块，已导入向量库"
-      var chunkDisplay = '?';
-      var m = data.message && data.message.match(/共\s*(\d+)\s*个分块/);
-      if (m) chunkDisplay = m[1];
-      status.textContent = (i18n('webui.rag_upload_ok') || '上传成功：已分 {} 块').replace('{}', chunkDisplay);
-      fileInput.value = ''; document.getElementById('rag-doc-title').value = '';
-      setTimeout(function() { loadRagDocuments(); }, 500);
-    } else {
-      status.style.background = '#ffebee'; status.style.color = '#c62828';
-      status.textContent = (i18n('webui.rag_upload_fail') || '上传失败') + ': ' + (data.error || '');
+    if (!data.ok) {
+      statusText.style.background = '#ffebee'; statusText.style.color = '#c62828';
+      statusText.textContent = (i18n('webui.rag_upload_fail') || '上传失败') + ': ' + (data.error || '');
+      return;
     }
-  } catch(e) { status.style.background = '#ffebee'; status.style.color = '#c62828'; status.textContent = (i18n('webui.rag_upload_fail') || '上传失败：{}').replace('{}', e.message); }
+
+    const taskId = data.task_id;
+    statusText.textContent = i18n('webui.rag_progress_parsing') || '正在解析文档...';
+
+    // 第二步：轮询进度
+    let pollInterval = null;
+    pollInterval = setInterval(async () => {
+      try {
+        const progRes = await fetch('/api/rag/upload-progress/' + taskId);
+        const progData = await progRes.json();
+        if (!progData.ok) {
+          clearInterval(pollInterval);
+          statusText.style.background = '#ffebee'; statusText.style.color = '#c62828';
+          statusText.textContent = '进度查询失败: ' + (progData.error || '');
+          return;
+        }
+
+        // 更新进度条
+        progressBar.style.width = (progData.progress || 0) + '%';
+        progressPct.textContent = (progData.progress || 0) + '%';
+
+        if (progData.status === 'done') {
+          clearInterval(pollInterval);
+          statusText.style.background = '#e8f5e9'; statusText.style.color = '#2e7d32';
+          statusText.textContent = progData.message || '上传完成';
+          progressBar.style.background = '#4caf50';
+          progressPct.textContent = '100%';
+          fileInput.value = '';
+          document.getElementById('rag-doc-title').value = '';
+          setTimeout(function() { loadRagDocuments(); }, 500);
+        } else if (progData.status === 'error') {
+          clearInterval(pollInterval);
+          statusText.style.background = '#ffebee'; statusText.style.color = '#c62828';
+          statusText.textContent = (progData.error || '处理失败');
+          progressBar.style.background = '#f44336';
+          progressPct.textContent = '';
+        } else {
+          // running — 更新状态文字
+          statusText.textContent = progData.stage || '处理中...';
+        }
+      } catch(e) {
+        clearInterval(pollInterval);
+        statusText.style.background = '#ffebee'; statusText.style.color = '#c62828';
+        statusText.textContent = '轮询异常: ' + e.message;
+      }
+    }, 1000);
+  } catch(e) {
+    statusText.style.background = '#ffebee'; statusText.style.color = '#c62828';
+    statusText.textContent = (i18n('webui.rag_upload_fail') || '上传失败：{}').replace('{}', e.message);
+  }
 }
 
 // ─── 一键修复建议功能 ───────────────────────────────────────
@@ -4843,7 +4926,15 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <input type="text" id="rag-doc-title" class="form-input" data-i18n="webui.rag_title_placeholder" placeholder="留空则使用文件名"/>
             </div>
           </div>
-          <div id="rag-upload-status" style="display:none;margin-bottom:10px;font-size:12.5px;padding:8px 12px;border-radius:6px"></div>
+          <div id="rag-upload-status" style="display:none;margin-bottom:10px">
+            <div id="rag-upload-status-text" style="font-size:12.5px;padding:8px 12px;border-radius:6px"></div>
+            <div style="margin-top:8px">
+              <div style="height:6px;background:var(--surface2);border-radius:3px;overflow:hidden">
+                <div id="rag-upload-progress-bar" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width .3s ease"></div>
+              </div>
+              <div id="rag-upload-progress-pct" style="font-size:11px;color:var(--text-muted);text-align:right;margin-top:2px"></div>
+            </div>
+          </div>
           <div class="btn-row">
             <button class="btn btn-primary" id="rag-upload-btn" data-i18n="webui.rag_upload_btn">📤 上传并向量化</button>
           </div>
@@ -10714,6 +10805,7 @@ let chatSpinnerDiv = null;   // 单个旋转动画 div
 let chatSpinnerInterval = null;  // 动画 interval ID
 let chatSpinnerTexts = ['正在巡检', '正在巡检 .', '正在巡检 ..', '正在巡检 ...'];
 let chatSpinnerIdx = 0;
+let chatSessionId = 'default_' + Math.random().toString(36).slice(2, 8);
 
 function toggleAiChat() {
   const sidebar = document.getElementById('ai-chat-sidebar');
@@ -10752,10 +10844,86 @@ function hideTypingIndicator() {
 }
 
 function setInputEnabled(enabled) {
-  const input = document.getElementById('chat-input');
+  const textarea = document.getElementById('chat-textarea');
   const btn = document.getElementById('chat-send-btn');
-  if (input) input.disabled = !enabled;
+  if (textarea) textarea.disabled = !enabled;
   if (btn) btn.disabled = !enabled;
+}
+
+function showChatStatus(text) {
+  const bar = document.getElementById('chat-status-bar');
+  const txt = document.getElementById('chat-status-text');
+  if (bar && txt) {
+    txt.textContent = text;
+    bar.style.display = 'flex';
+  }
+}
+
+function hideChatStatus() {
+  const bar = document.getElementById('chat-status-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+function setChatMode(mode) {
+  const badge = document.getElementById('chat-mode-badge');
+  if (!badge) return;
+  if (mode === 'qa') {
+    badge.textContent = '问答模式';
+    badge.style.display = 'inline-block';
+  } else if (mode === 'inspect') {
+    badge.textContent = '巡检模式';
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// 简单的 Markdown 转 HTML（用于 AI 问答回答渲染）
+function _markdownToHtml(text) {
+  if (!text) return '';
+  var html = text
+    // 转义 HTML 特殊字符
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    // 代码块 ``` ... ```
+    .replace(/```([\s\S]*?)```/g, '<pre style="background:var(--surface2);padding:10px;border-radius:8px;overflow-x:auto;font-size:12px;margin:6px 0"><code>$1</code></pre>')
+    // 行内代码 `...`
+    .replace(/`([^`]+)`/g, '<code style="background:var(--surface2);padding:2px 6px;border-radius:4px;font-size:12px">$1</code>')
+    // 加粗 **...**
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    // 斜体 *...*
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    // 无序列表
+    .replace(/^[•\-]\s+(.+)$/gm, '<li style="margin-left:16px">$1</li>')
+    // 有序列表
+    .replace(/^\d+\.\s+(.+)$/gm, '<li style="margin-left:16px;list-style-type:decimal">$1</li>')
+    // 换行
+    .replace(/\n/g, '<br>');
+  return html;
+}
+
+function clearChatSession() {
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({message: '/clear', session_id: chatSessionId})
+  }).then(function(r) { return r.json(); }).then(function(data) {
+    // 清空消息列表，重新显示欢迎
+    const container = document.getElementById('chat-messages');
+    container.innerHTML = '';
+    addChatMessage(
+      '✅ 对话已清空。<br><br>' +
+      '<strong>🔍 巡检执行</strong><br>' +
+      '• 巡检 MySQL-01 的连接数<br>' +
+      '• 查看 PostgreSQL 的锁等待<br><br>' +
+      '<strong>💡 知识问答</strong><br>' +
+      '• MySQL 慢查询怎么优化？<br>' +
+      '• PostgreSQL 如何配置 WAL 归档？',
+      'ai', true
+    );
+    chatSessionId = 'default_' + Math.random().toString(36).slice(2, 8);
+    hideChatStatus();
+    setChatMode('');
+  });
 }
 
 // 发送带上下文的聊天消息（用于快捷按钮选择数据源）
@@ -10770,13 +10938,29 @@ async function sendChatMessageWithContext(message, context) {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(Object.assign({message: message}, context || {}))
+      body: JSON.stringify(Object.assign({message: message, session_id: chatSessionId}, context || {}))
     });
     const data = await res.json();
     hideTypingIndicator();
 
     if (data.type === 'text') {
       addChatMessage(data.message, 'ai', false);
+    } else if (data.type === 'qa') {
+      // 知识库问答响应
+      setChatMode('qa');
+      // 简单 Markdown 转 HTML（加粗、代码块、列表）
+      addChatMessage(_markdownToHtml(data.message), 'ai', true);
+      if (data.rag_disabled) {
+        showChatStatus('⚠️ AI 诊断未启用 — 点击此处前往设置');
+        document.getElementById('chat-status-bar').onclick = function() {
+          showPage('inspection-config', 'webui.nav_inspection_config');
+        };
+        document.getElementById('chat-status-bar').style.cursor = 'pointer';
+      } else if (data.rag_used) {
+        showChatStatus('📚 已参考知识库文档');
+      } else {
+        showChatStatus('💡 基于 AI 自身知识回答');
+      }
     } else if (data.type === 'ask') {
       addChatMessage(data.message, 'ai', false);
       if (data.candidates && data.candidates.length > 0) {
@@ -10801,6 +10985,7 @@ async function sendChatMessageWithContext(message, context) {
         container.scrollTop = container.scrollHeight;
       }
     } else if (data.type === 'report') {
+      setChatMode('inspect');
       addChatMessage(data.message, 'ai', false);
       if (data.matched_datasource) {
         var ds = data.matched_datasource;
@@ -10823,11 +11008,11 @@ async function sendChatMessageWithContext(message, context) {
 }
 
 async function sendChatMessage() {
-  const input = document.getElementById('chat-input');
-  const message = input.value.trim();
+  const textarea = document.getElementById('chat-textarea');
+  const message = textarea.value.trim();
   if (!message) return;
 
-  input.value = '';
+  textarea.value = '';
   setInputEnabled(false);
 
   addChatMessage(message, 'user', false);
@@ -10837,14 +11022,44 @@ async function sendChatMessage() {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: message})
+      body: JSON.stringify({message: message, session_id: chatSessionId})
     });
     const data = await res.json();
 
     hideTypingIndicator();
 
-    if (data.type === 'text') {
+    // 清空对话
+    if (data.cleared) {
+      const container = document.getElementById('chat-messages');
+      container.innerHTML = '';
+      addChatMessage(
+        '✅ 对话已清空。<br><br>' +
+        '<strong>🔍 巡检执行</strong><br>' +
+        '• 巡检 MySQL-01 的连接数<br><br>' +
+        '<strong>💡 知识问答</strong><br>' +
+        '• MySQL 慢查询怎么优化？',
+        'ai', true
+      );
+      chatSessionId = 'default_' + Math.random().toString(36).slice(2, 8);
+      hideChatStatus();
+      setChatMode('');
+    } else if (data.type === 'text') {
       addChatMessage(data.message, 'ai', false);
+    } else if (data.type === 'qa') {
+      // 知识库问答响应
+      setChatMode('qa');
+      addChatMessage(_markdownToHtml(data.message), 'ai', true);
+      if (data.rag_disabled) {
+        showChatStatus('⚠️ AI 诊断未启用 — 点击此处前往设置');
+        document.getElementById('chat-status-bar').onclick = function() {
+          showPage('inspection-config', 'webui.nav_inspection_config');
+        };
+        document.getElementById('chat-status-bar').style.cursor = 'pointer';
+      } else if (data.rag_used) {
+        showChatStatus('📚 已参考知识库文档');
+      } else {
+        showChatStatus('💡 基于 AI 自身知识回答');
+      }
     } else if (data.type === 'ask') {
       addChatMessage(data.message, 'ai', false);
       if (data.candidates && data.candidates.length > 0) {
@@ -10869,6 +11084,7 @@ async function sendChatMessage() {
         container.scrollTop = container.scrollHeight;
       }
     } else if (data.type === 'report') {
+      setChatMode('inspect');
       addChatMessage(data.message, 'ai', false);
       if (data.matched_datasource) {
         var ds = data.matched_datasource;
@@ -11465,24 +11681,39 @@ async function deleteBackupHistory(recordId) {
 <!-- AI Chat Sidebar -->
 <button id="ai-chat-fab" onclick="toggleAiChat()" title="AI 巡检助手" style="position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#4caf50,#2196f3);border:none;color:#fff;font-size:24px;cursor:pointer;z-index:99998;box-shadow:0 4px 16px rgba(46,160,67,0.4);display:flex;align-items:center;justify-content:center;transition:all 0.3s ease">💬</button>
 
-<div id="ai-chat-sidebar" style="position:fixed;right:-420px;top:0;width:400px;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:99999;display:flex;flex-direction:column;transition:right 0.3s ease;box-shadow:-4px 0 20px rgba(0,0,0,0.3)">
-  <div class="chat-header">
+<div id="ai-chat-sidebar" style="position:fixed;right:-420px;top:0;width:420px;height:100vh;background:var(--surface);border-left:1px solid var(--border);z-index:99999;display:flex;flex-direction:column;transition:right 0.3s ease;box-shadow:-4px 0 20px rgba(0,0,0,0.3)">
+  <div class="chat-header" style="position:relative">
     <span style="font-size:20px">🤖</span>
     <span class="chat-title" data-i18n="webui.chat_title">AI 巡检助手</span>
+    <span id="chat-mode-badge" class="chat-mode-badge" style="font-size:11px;padding:2px 8px;border-radius:10px;background:rgba(76,175,80,0.15);color:#4caf50;margin-left:8px;display:none">问答模式</span>
+    <button class="chat-close" onclick="clearChatSession()" title="清空对话" style="font-size:16px;color:var(--text-secondary);background:none;border:none;cursor:pointer;padding:4px 8px;margin-right:4px">🗑</button>
     <button class="chat-close" onclick="toggleAiChat()">✕</button>
   </div>
   <div class="chat-messages" id="chat-messages">
     <div class="chat-msg ai" id="chat-welcome">
-      您好！我是 DBCheck AI 巡检助手。请告诉我您想巡检哪个数据库，例如：
-      <br>• <strong>巡检 MySQL-01 的连接数</strong>
-      <br>• <strong>查看 PostgreSQL 的锁等待</strong>
-      <br>• <strong>对 Oracle 做完整巡检</strong>
+      您好！我是 DBCheck AI 巡检助手 🎉<br><br>
+      <strong>🔍 巡检执行</strong><br>
+      • 巡检 MySQL-01 的连接数<br>
+      • 查看 PostgreSQL 的锁等待<br>
+      • 对 Oracle 做完整巡检<br><br>
+      <strong>💡 知识问答</strong><br>
+      • MySQL 慢查询怎么优化？<br>
+      • PostgreSQL 如何配置 WAL 归档？<br>
+      • Oracle 表空间满了怎么办？<br><br>
+      <span style="font-size:11px;color:var(--text-secondary)">输入 <code>/clear</code> 清空对话</span>
     </div>
   </div>
-  <div class="chat-input-area">
-    <input type="text" class="chat-input" id="chat-input" data-i18n="webui.chat_placeholder"
-           placeholder="输入巡检需求..." onkeypress="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChatMessage()}">
-    <button class="chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()">➤</button>
+  <div class="chat-status-bar" id="chat-status-bar" style="display:none;padding:4px 16px;font-size:11px;color:var(--text-secondary);border-top:1px solid var(--border);background:var(--surface2)">
+    <span id="chat-status-text"></span>
+  </div>
+  <div class="chat-input-area" style="flex-direction:column;padding:8px 12px;gap:8px">
+    <textarea id="chat-textarea" class="chat-textarea" rows="2"
+              placeholder="输入巡检需求或数据库问题..."
+              onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChatMessage()}"></textarea>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span id="chat-hint" style="font-size:11px;color:var(--text-secondary)">Enter 发送，Shift+Enter 换行</span>
+      <button class="chat-send-btn" id="chat-send-btn" onclick="sendChatMessage()" title="发送">➤</button>
+    </div>
   </div>
 </div>
 

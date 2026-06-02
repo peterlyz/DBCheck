@@ -185,6 +185,28 @@ class RAGRetriever:
 
         return '\n'.join(header + lines)
 
+    def retrieve_for_chat(self, query_text: str, db_type: str = None,
+                          top_k: int = 5) -> str:
+        """
+        通用问答检索 — 根据用户自然语言问题检索知识库相关片段
+
+        Args:
+            query_text: 用户提问文本
+            db_type: 可选的数据库类型过滤（mysql/pg/oracle/dm/sqlserver/tidb）
+            top_k: 返回结果数量
+
+        Returns:
+            格式化的 RAG 上下文文本，空字符串表示无结果
+        """
+        try:
+            emb = self.embedding_model.embed_text(query_text)
+            results = self.vector_store.search(emb, db_type=db_type, top_k=top_k)
+            if not results:
+                return ''
+            return self.format_rag_context(results, lang='zh')
+        except Exception:
+            return ''
+
     def test_retrieve(self, query_text: str, db_type: str = None,
                       top_k: int = 5) -> list[dict]:
         """

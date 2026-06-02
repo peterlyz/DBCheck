@@ -187,6 +187,13 @@ def get_admin_token():
 # 全局任务状态
 tasks = {}
 
+# RAG 管理器全局单例
+_rag_manager = None
+
+# AI 聊天会话历史（key: session_id, value: list of {role, content}）
+_chat_sessions = {}
+_CHAT_HISTORY_LIMIT = 20  # 每个会话最多保留 20 条消息
+
 # ── 用户认证 ───────────────────────────────────────────────
 from auth import init_default_user, register_auth_routes
 init_default_user()
@@ -2681,12 +2688,15 @@ def api_notifier_test_webhook():
 # ═══════════════════════════════════════════════════════
 
 def _get_rag_manager():
-    """延迟导入并初始化 RAGManager"""
-    try:
-        from rag.manager import RAGManager
-        return RAGManager()
-    except Exception as e:
-        return None
+    """延迟导入并初始化 RAGManager — 全局单例，确保进度字典共享"""
+    global _rag_manager
+    if _rag_manager is None:
+        try:
+            from rag.manager import RAGManager
+            _rag_manager = RAGManager()
+        except Exception as e:
+            return None
+    return _rag_manager
 
 @app.route('/api/rag/documents', methods=['GET'])
 def api_rag_list_documents():
@@ -2701,6 +2711,7 @@ def api_rag_list_documents():
 
 @app.route('/api/rag/documents', methods=['POST'])
 def api_rag_upload_document():
+    """异步上传文档 — 立即返回 task_id，前端轮询进度"""
     mgr = _get_rag_manager()
     if mgr is None:
         return jsonify({'ok': False, 'error': 'RAG 模块未加载'})
@@ -2717,14 +2728,25 @@ def api_rag_upload_document():
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(f.filename)[1])
         f.save(tmp.name)
         tmp.close()
-        ok, message = mgr.add_document(tmp.name, db_type, title)
-        os.unlink(tmp.name)
-        if ok:
-            return jsonify({'ok': True, 'message': message})
-        else:
-            return jsonify({'ok': False, 'error': message})
+        # 启动异步上传，立即返回 task_id（临时文件由后台线程清理）
+        task_id = mgr.start_upload(tmp.name, db_type, title, delete_after=True)
+        return jsonify({'ok': True, 'task_id': task_id})
     except Exception as e:
         import traceback; traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)})
+
+@app.route('/api/rag/upload-progress/<task_id>', methods=['GET'])
+def api_rag_upload_progress(task_id):
+    """查询上传任务进度"""
+    mgr = _get_rag_manager()
+    if mgr is None:
+        return jsonify({'ok': False, 'error': 'RAG 模块未加载'})
+    try:
+        prog = mgr.get_upload_progress(task_id)
+        if prog is None:
+            return jsonify({'ok': False, 'error': '任务不存在'})
+        return jsonify({'ok': True, **prog})
+    except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
 @app.route('/api/rag/documents/<path:doc_id>', methods=['DELETE'])
@@ -4796,6 +4818,193 @@ def _call_llm_openai(cfg: dict, prompt: str, system: str, timeout: int) -> str:
         return f'[OpenAI API 调用失败: {e}]'
 
 
+# ══════════════════════════════════════════════════════════════
+#  AI 聊天会话管理 & RAG 问答
+# ══════════════════════════════════════════════════════════════
+
+def _get_chat_session(session_id: str) -> list:
+    """获取或创建聊天会话历史"""
+    if session_id not in _chat_sessions:
+        _chat_sessions[session_id] = []
+    return _chat_sessions[session_id]
+
+
+def _add_to_history(session_id: str, role: str, content: str):
+    """添加消息到会话历史，超出限制时截断"""
+    history = _get_chat_session(session_id)
+    history.append({'role': role, 'content': content})
+    # 保留最近 N 条
+    if len(history) > _CHAT_HISTORY_LIMIT:
+        _chat_sessions[session_id] = history[-_CHAT_HISTORY_LIMIT:]
+
+
+def _clear_chat_session(session_id: str):
+    """清空指定会话历史"""
+    _chat_sessions.pop(session_id, None)
+
+
+def _format_conversation_history(session_id: str) -> str:
+    """将会话历史格式化为 LLM 可读的对话文本"""
+    history = _get_chat_session(session_id)
+    if not history:
+        return ''
+    lines = []
+    for msg in history[-10:]:  # 最近 10 条
+        role_label = '用户' if msg['role'] == 'user' else 'AI'
+        lines.append(f"{role_label}: {msg['content']}")
+    return '\n'.join(lines)
+
+
+def _classify_chat_intent(user_message: str) -> str:
+    """
+    轻量级意图分类：判断用户问题是「巡检执行」还是「知识问答」
+    返回: 'inspect' | 'qa'
+    策略：先关键词匹配，再 fallback 到 LLM
+    """
+    msg = user_message.strip().lower()
+
+    # 巡检关键词
+    inspect_keywords = [
+        '巡检', '检查', '诊断', '全库', '完整', '报告',
+        'inspect', 'diagnose', 'check', 'scan', 'report',
+        '连接数', '锁等待', '慢查询',
+        'connection', 'lock', 'slow query',
+        '启动巡检', '开始巡检', '执行巡检',
+        'mysql-', 'pg-', 'oracle-', 'tidb-', 'dm-', 'sqlserver-',
+    ]
+    for kw in inspect_keywords:
+        if kw in msg:
+            return 'inspect'
+
+    # 问答关键词（数据库知识类）
+    qa_keywords = [
+        '怎么', '如何', '为什么', '是什么', '有哪些', '推荐', '最佳实践',
+        '如何优化', '怎么办', '什么原因', '怎么解决',
+        'how to', 'what is', 'why', 'best practice', 'recommend',
+        '慢查询', '索引', '事务', '锁', '备份', '恢复',
+        'innodb', 'buffer pool', 'wal', 'redo', 'undo',
+        'vacuum', 'autovacuum', '归档',
+    ]
+    for kw in qa_keywords:
+        if kw in msg:
+            return 'qa'
+
+    # 默认：尝试用 LLM 判断
+    try:
+        cfg = _load_ai_config()
+        backend = cfg.get('backend', 'ollama')
+        if backend in ('ollama', 'openai'):
+            system_prompt = """你是一个意图分类器。用户发来一条消息给数据库巡检助手。
+请判断这是「巡检执行」（需要连接数据库执行巡检操作）还是「知识问答」（询问数据库运维知识）。
+只输出 inspect 或 qa，不要输出其他内容。"""
+            response = _call_llm(user_message, system_prompt)
+            if 'qa' in response.lower():
+                return 'qa'
+        return 'inspect'  # LLM 调用失败时默认巡检
+    except Exception:
+        return 'inspect'
+
+
+def _answer_chat_qa(session_id: str, user_message: str, db_type: str = None) -> dict:
+    """
+    基于 RAG 知识库回答数据库运维问题
+
+    Returns:
+        {'ok': True, 'answer': str, 'rag_used': bool, 'rag_disabled': bool}
+    """
+    cfg = _load_ai_config()
+    backend = cfg.get('backend', 'ollama')
+    rag_cfg = cfg.get('rag', {})
+    rag_enabled = rag_cfg.get('enabled', True) if isinstance(rag_cfg, dict) else True
+
+    # 检查 AI 后端是否可用
+    ai_available = backend in ('ollama', 'openai')
+    if backend == 'openai' and not cfg.get('online_enabled', False):
+        ai_available = False
+
+    if not ai_available:
+        return {
+            'ok': True,
+            'answer': '💡 AI 后端未启用。请在「AI 诊断」设置中配置 Ollama 或 OpenAI 后端，才能使用知识库问答功能。',
+            'rag_used': False,
+            'rag_disabled': True,
+        }
+
+    # 检查 RAG
+    if not rag_enabled:
+        return {
+            'ok': True,
+            'answer': '💡 RAG 知识库未启用。请在「AI 诊断」设置中开启 RAG 知识库功能，以获得基于文档的智能问答。\n\n> 即使未启用知识库，我也可以尝试基于自身知识回答您的问题。',
+            'rag_used': False,
+            'rag_disabled': True,
+        }
+
+    # 尝试 RAG 检索
+    rag_context = ''
+    rag_used = False
+    try:
+        from rag import RAGRetriever, VectorStore, OllamaEmbedding, OpenAIEmbedding
+        vs = VectorStore()
+        stats = vs.get_collection_stats()
+        if stats.get('total_chunks', 0) > 0:
+            if backend == 'ollama':
+                emb = OllamaEmbedding()
+            else:
+                emb = OpenAIEmbedding(
+                    api_url=cfg.get('online_api_url', 'https://api.openai.com/v1'),
+                    model=cfg.get('online_model', 'text-embedding-3-small'),
+                    api_key=cfg.get('api_key', ''),
+                )
+            retriever = RAGRetriever(vs, emb)
+            rag_context = retriever.retrieve_for_chat(
+                user_message, db_type=db_type, top_k=5)
+            rag_used = bool(rag_context)
+    except Exception:
+        pass  # RAG 失败不影响回答
+
+    # 构建 Prompt
+    system_prompt = """你是 DBCheck 数据库运维智能助手，专门帮助用户解答数据库运维、性能优化、故障排查等方面的问题。
+
+回答规则：
+1. 如果知识库中有相关文档，优先参考知识库内容回答
+2. 如果没有知识库参考，基于自身知识回答
+3. 回答要简洁实用，多给具体建议和命令示例
+4. 涉及 SQL 时注明适用的数据库类型
+5. 使用 Markdown 格式排版
+6. 如果问题与数据库运维无关，礼貌地说明能力范围"""
+
+    conversation = _format_conversation_history(session_id)
+    if conversation:
+        prompt = f"""## 历史对话
+{conversation}
+
+## 当前问题
+{user_message}"""
+    else:
+        prompt = user_message
+
+    if rag_context:
+        prompt = f"""{prompt}
+
+{rag_context}
+
+请结合上述知识库内容回答用户的问题。"""
+    else:
+        prompt = f"""{prompt}
+
+（本次未检索到相关知识库文档，请基于自身知识回答）"""
+
+    # 调用 LLM
+    try:
+        answer = _call_llm(prompt, system_prompt)
+        # 保存到会话历史
+        _add_to_history(session_id, 'user', user_message)
+        _add_to_history(session_id, 'ai', answer)
+        return {'ok': True, 'answer': answer, 'rag_used': rag_used, 'rag_disabled': False}
+    except Exception as e:
+        return {'ok': True, 'answer': f'❌ LLM 调用失败: {e}\n\n请检查 AI 后端服务是否正常运行。', 'rag_used': False, 'rag_disabled': False}
+
+
 def parse_intent(user_message: str) -> dict:
     """解析用户意图，返回结构化信息"""
     system_prompt = """你是一个数据库巡检助手。用户会用自然语言描述巡检需求。
@@ -5136,14 +5345,48 @@ def execute_simple_query(db_info: dict, db_type: str, scope: str) -> str:
 
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
-    """处理自然语言巡检请求"""
+    """处理自然语言请求：支持知识问答和巡检执行两种模式"""
     try:
         data = request.get_json() or {}
         message = data.get('message', '')
+        session_id = data.get('session_id', 'default')
 
         if not message:
-            return jsonify({'ok': False, 'type': 'error', 'message': '请输入巡检需求'})
+            return jsonify({'ok': False, 'type': 'error', 'message': '请输入您的问题'})
 
+        # 0. 清空对话特殊指令
+        if message.strip() in ('/clear', '/清空', '/new'):
+            _clear_chat_session(session_id)
+            return jsonify({
+                'ok': True,
+                'type': 'text',
+                'message': '✅ 对话已清空，开始新的对话。',
+                'cleared': True,
+            })
+
+        # 0.5 分类意图：巡检执行 vs 知识问答
+        chat_intent = _classify_chat_intent(message)
+
+        # ─── 知识问答模式 ───
+        if chat_intent == 'qa':
+            qa_db_type = None
+            # 尝试从消息中提取 db_type（用于 RAG 过滤）
+            intent = parse_intent(message)
+            qa_db_type = intent.get('db_type')
+            if qa_db_type == 'unknown':
+                qa_db_type = None
+
+            result = _answer_chat_qa(session_id, message, db_type=qa_db_type)
+            resp = {
+                'ok': True,
+                'type': 'qa',
+                'message': result['answer'],
+                'rag_used': result['rag_used'],
+                'rag_disabled': result['rag_disabled'],
+            }
+            return jsonify(resp)
+
+        # ─── 巡检执行模式（原有逻辑）───
         # 1. 解析意图
         intent = parse_intent(message)
         db_type = intent.get('db_type', 'unknown')
