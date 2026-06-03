@@ -79,7 +79,7 @@ class RemoteSystemInfoCollector:
                                         username=self.username, pkey=private_key, timeout=15)
             else:
                 self.ssh_client.connect(hostname=self.host, port=self.port,
-                                        username=self.username, password=self.password or '',
+                                        username=self.username, password=self.password,
                                         timeout=15, look_for_keys=False, allow_agent=False)
             return True
         except Exception:

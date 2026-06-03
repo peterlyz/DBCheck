@@ -999,7 +999,7 @@ def test_ssh_connection(host, port=22, username='root', password=None, key_file=
             client.connect(hostname=host, port=int(port), username=username,
                            pkey=pkey, timeout=10, look_for_keys=False, allow_agent=False,
                            disabled_algorithms={'pubkeys': ['ssh-rsa']})
-        elif password:
+        elif password is not None:
             client.connect(hostname=host, port=int(port), username=username,
                            password=password, timeout=10, look_for_keys=False, allow_agent=False,
                            disabled_algorithms={'pubkeys': ['ssh-rsa']})
@@ -1623,8 +1623,8 @@ def api_test_ssh():
         data.get('ssh_host', ''),
         data.get('ssh_port', 22),
         data.get('ssh_user', 'root'),
-        data.get('ssh_password', ''),
-        data.get('ssh_key_file', '')
+        data.get('ssh_password') or None,
+        data.get('ssh_key_file') or None
     )
     return jsonify({'ok': ok, 'msg': msg})
 
@@ -3351,6 +3351,12 @@ def api_pro_datasource_add():
             password=data.get('password', ''),
             service_name=data.get('service_name', ''),
             sysdba=bool(data.get('sysdba', False)),
+            ssh_host=data.get('ssh_host', ''),
+            ssh_port=int(data.get('ssh_port', 22)),
+            ssh_user=data.get('ssh_user', ''),
+            ssh_password=data.get('ssh_password', ''),
+            ssh_key_file=data.get('ssh_key_file', ''),
+            ssh_enabled=bool(data.get('ssh_enabled', False)),
             tags=data.get('tags', []),
             group=data.get('group', 'default'),
             description=data.get('description', ''),
