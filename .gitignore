@@ -36,5 +36,5 @@ mysql_inspector.lic
 *_plan.md
 # Pro runtime data
 pro_data/
-# Oracle Instant Client binaries (auto-downloaded, too large for Git)
-oracle_client/
+# Driver binaries (download from GitHub Releases, too large for Git)
+drivers/

@@ -2,7 +2,7 @@
 
 ![logo](snapshot/dbcheck_logo_info.png)
 
-DBCheck is an open-source, cross-platform automated database health check tool that supports seven mainstream relational databases: **MySQL**, **PostgreSQL**, **Oracle**, **SQL Server**, **DM8**, **TiDB**, and **IvorySQL**. The tool automatically generates standardized Microsoft Word inspection reports by executing predefined SQL checks and collecting system resources. It also provides advanced features such as SQL editor, remote terminal, configurable inspection chapters, configuration baseline management, historical trend analysis, AI-powered intelligent diagnostics, index health analysis, in-depth slow query analysis, server inspection, share links, and data-masked export. DBCheck aims to free DBAs from repetitive and time-consuming manual inspection work, improving database operation and maintenance efficiency and risk detection capabilities.
+DBCheck is an open-source, cross-platform automated database health check tool that supports eight mainstream relational databases: **MySQL**, **PostgreSQL**, **Oracle**, **SQL Server**, **DM8**, **TiDB**, **IvorySQL**, and **YashanDB**. The tool automatically generates standardized Microsoft Word inspection reports by executing predefined SQL checks and collecting system resources. It also provides advanced features such as SQL editor, remote terminal, configurable inspection chapters, configuration baseline management, historical trend analysis, AI-powered intelligent diagnostics, index health analysis, in-depth slow query analysis, server inspection, share links, and data-masked export. DBCheck aims to free DBAs from repetitive and time-consuming manual inspection work, improving database operation and maintenance efficiency and risk detection capabilities.
 > website：https://dbcheck.top
 
 > Language: [English](./README.md) | [中文](./README_zh.md)
@@ -99,7 +99,7 @@ Each risk is presented as a card: **Risk Level (High/Medium/Low) → Issue Descr
 | 🗄️ Centralized Datasource Management | Unified management of all database instances with grouping, batch inspection, connection testing, and CSV import/export |
 | 📊 Historical Trend Analysis | Automatically aggregates data from multiple inspection runs on the same database, generates metric trend line charts, and compares against previous results to surface changes |
 | 🤖 AI-Powered Diagnosis | Calls local Ollama based on inspection metrics to generate personalized optimization recommendations |
-| 🔍 150+ Enhanced Rules | Full-dimensional risk detection across seven databases (MySQL 35+, PG 27+, Oracle 20+, SQL Server 15+, DM8 16+, TiDB 18+, IvorySQL 27+) — including 28 new slow query deep analysis rules |
+| 🔍 160+ Enhanced Rules | Full-dimensional risk detection across eight databases (MySQL 35+, PG 27+, Oracle 20+, SQL Server 15+, DM8 16+, TiDB 18+, IvorySQL 27+, YashanDB 15+) — including 28 new slow query deep analysis rules |
 | 🖥️ Server Inspection | Comprehensive check of server hardware and system resource status, generating professional server inspection reports |
 | 🔗 Share Links | Generate online share links with one click, supporting both server and database inspection report sharing |
 | 📡 Real-Time Monitoring | Real-time slow query and active connection monitoring across all datasources with auto-refresh, heatmaps, and CSV export |
@@ -112,7 +112,7 @@ Each risk is presented as a card: **Risk Level (High/Medium/Low) → Issue Descr
 
 | Feature | Description |
 |---------|-------------|
-| Multi-Database Support | MySQL / PostgreSQL / Oracle / SQL Server / DM8 / TiDB / IvorySQL |
+| Multi-Database Support | MySQL / PostgreSQL / Oracle / SQL Server / DM8 / TiDB / IvorySQL / YashanDB |
 | Syntax Highlighting | Color-coded SQL statements for better readability |
 | Result Grid | Query results displayed in a scrollable table with row numbers |
 | Execution History | Recent queries are preserved within the current session |
@@ -323,9 +323,9 @@ http://localhost:5003/share/{share_id}
 
 ### Database Inspection
 
-> Comprehensive inspection for seven mainstream relational databases, covering 150+ enhanced rules.
+> Comprehensive inspection for eight mainstream relational databases, covering 160+ enhanced rules.
 
-| Dimension | MySQL | PostgreSQL | Oracle | SQL Server | DM8 | TiDB | IvorySQL |
+| Dimension | MySQL | PostgreSQL | Oracle | SQL Server | DM8 | TiDB | IvorySQL | YashanDB |
 |-----------|:-----:|:----------:|:------:|:-----------:|:---:|:----:|:----:|
 | Basic Info (version / instance / database) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Session and Connection Status | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -353,6 +353,8 @@ http://localhost:5003/share/{share_id}
 | Placement & Affinity Policy | — | — | — | — | — | ✅ | — |
 
 > **IvorySQL**: PG-compatible, reuses PG inspection engine. All checkmarks are identical to PostgreSQL. Default port: 5432. Dependencies: `psycopg2-binary` (same as PG).
+>
+> **YashanDB**: Oracle-compatible, reuses Oracle inspection engine with YashanDB adaptations. Default port: 9088. Dependencies: `yashandb`.
 
 ### Server Inspection
 
@@ -387,7 +389,7 @@ http://localhost:5003/share/{share_id}
 
 | Feature | Description |
 |---------|-------------|
-| Multi-Database Support | MySQL / PostgreSQL / Oracle / SQL Server / DM8 / TiDB / IvorySQL |
+| Multi-Database Support | MySQL / PostgreSQL / Oracle / SQL Server / DM8 / TiDB / IvorySQL / YashanDB |
 | Instance Info | Customizable labels, groups, ports, usernames |
 | Oracle-Specific | Service Name/SID configuration, SYSDBA privileged connection |
 | Connection Testing | One-click database connection test with real-time results |
@@ -506,6 +508,19 @@ http://localhost:5003/share/{share_id}
 | max_allowed_packet | Max packet size | 64MB |
 | tidb_hash_join_concurrency / tidb_index_lookup_concurrency | Operator concurrency | 5 each |
 
+#### YashanDB (8 parameters)
+
+| Parameter | Description | Recommended Value Basis |
+|-----------|-------------|------------------------|
+| BUFFER_POOL_SIZE | Buffer pool size | 30% of DB size |
+| MAX_CONNECTIONS | Maximum connections | 500 |
+| SORT_BUF_SIZE | Sort buffer size | 64MB |
+| HASH_AREA_SIZE | Hash area size | 128MB |
+| OPTIMIZER_MODE | Optimizer mode | ALL_ROWS |
+| LOG_BUF_SIZE | Log buffer size | 8MB |
+| ARCHIVE_LOG_MODE | Archive log mode | ENABLED |
+| COMPATIBLE_MODE | Compatibility mode | ORACLE |
+
 ### Index Health Analysis
 
 > Detects three types of index issues across all supported databases — missing indexes, redundant/duplicate indexes, and long-unused indexes — then generates actionable remediation recommendations.
@@ -552,6 +567,12 @@ http://localhost:5003/share/{share_id}
 |---------------|-------------|-------------|
 | Redundant indexes | information_schema.STATISTICS | Finds identical or left-prefix-matching index pairs |
 
+#### YashanDB
+
+| Analysis Type | Data Source | Description |
+|---------------|-------------|-------------|
+| Redundant indexes | DBA_IND_COLUMNS | Finds identical or containing column index pairs |
+
 ### System Resource Monitoring
 
 - **CPU**: utilization, core count, clock speed
@@ -571,7 +592,7 @@ Automatically detects potential database risks — **each risk includes an execu
 |---------|-------------|
 | One-Click Execution | Each risk in the inspection report has an "Execute Fix" button — click to run directly |
 | Dangerous SQL Confirmation | High-risk operations (DELETE, DROP, TRUNCATE) prompt for confirmation before execution |
-| Multi-Database Support | MySQL / PostgreSQL / Oracle / SQL Server / DM8 / TiDB / IvorySQL |
+| Multi-Database Support | MySQL / PostgreSQL / Oracle / SQL Server / DM8 / TiDB / IvorySQL / YashanDB |
 | Execution Logging | All fix operations are logged for audit and traceability |
 | User-Friendly Error Messages | Common database errors are translated into friendly Chinese prompts |
 
@@ -686,8 +707,10 @@ Risk Detected → View Fix SQL → Click "Execute Fix" → Dangerous ops require
 | **DM8** | +3 (V$LOCK analysis / V$TRXWAIT chain / V$TRX long trx) | 5-dimension (TRX_ID, LTYPE, LMODE, BLOCKED, duration) | 5 |
 | **SQL Server** | Built-in (sys.dm_exec_requests blocking_chain / deadlock_xml / long-running sessions) | 5-dimension | 4 |
 | **TiDB** | Built-in (CLUSTER_PROCESSLIST / DEADLOCKS / TIDB_TRX) | 5-dimension | 4 |
+| **IvorySQL** | +4 (PG-compatible, reuses PG lock analysis logic) | 5-dimension (same as PostgreSQL) | 5 |
+| **YashanDB** | +3 (V$LOCK analysis / V$TRXWAIT chain / V$TRX long trx) | 5-dimension (same as Oracle) | 5 |
 
-> **Note**: SQL Server and TiDB lock diagnostics are natively integrated through system DMVs / cluster tables and do not require additional SQL templates. All six engines output structured lock analysis chapters in the Word report.
+> **Note**: SQL Server and TiDB lock diagnostics are natively integrated through system DMVs / cluster tables and do not require additional SQL templates. All eight engines output structured lock analysis chapters in the Word report.
 
 ### Historical Trend Analysis
 
@@ -770,6 +793,7 @@ Each database has its own optimized query for capturing the most expensive state
 | **SQL Server** | `sys.dm_exec_query_stats` | CPU usage, logical reads, elapsed time, physical reads |
 | **DM8** | `V$SQL` | Execution time, disk reads |
 | **TiDB** | `information_schema.cluster_slow_query` | Query time, memory usage, scan rows, Coprocessor tasks |
+| **YashanDB** | `V$SQL` | Execution time, disk reads |
 
 #### Integration with Inspection Flow
 
@@ -972,6 +996,8 @@ The **📚 RAG Knowledge Base** page in Web UI provides:
 - **TiDB Privileges**: Read-only access to information_schema, performance_schema, and mysql databases (identical to MySQL)
 - **IvorySQL Dependencies**: `psycopg2-binary` (same as PostgreSQL — IvorySQL is PG-compatible; default port **5432**)
 - **IvorySQL Privileges**: Read-only access to pg_stat_* series views and pg_roles (identical to PostgreSQL)
+- **YashanDB Dependencies**: `yashandb` (pip install yashandb)
+- **YashanDB Privileges**: Read-only access to V$* system views (Oracle-compatible; default port **9088**)
 
 ### Installing Dependencies
 
@@ -1013,7 +1039,7 @@ python web_ui.py
 | Step | Function |
 |:---:|---------|
 | 1 | 🗄️ Datasource Management: Add, edit, delete, test database connections with group management |
-| 2 | Select database type (🐬 MySQL / 🐘 PostgreSQL / 🔴 Oracle / 🟠 SQL Server / 🟡 DM8 / 🐬 TiDB / 🐘 IvorySQL) |
+| 2 | Select database type (🐬 MySQL / 🐘 PostgreSQL / 🔴 Oracle / 🟠 SQL Server / 🟡 DM8 / 🐬 TiDB / 🐘 IvorySQL / 🔵 YashanDB) |
 | 3 | Fill in connection info — Oracle requires service name/SID; DM8 does not need a database name |
 | 4 | Online connection testing (SYSDBA privileged verification via checkbox) |
 | 5 | Configure SSH for system resource collection (optional, default port 22; DM8 supports SSH with auto-fallback) |
@@ -1053,6 +1079,7 @@ python main.py --lang en
     🟡  5 │ DM8 (DM8+)
     🐬  6 │ TiDB (6.5+ / MySQL 8.0+ compatible)
     🐘  7 │ IvorySQL (PG-compatible)
+    🔵  8 │ YashanDB (2.0+ / Oracle-compatible)
   ──────────────────────────────────────────────────────────
     📋  8 │ Batch Template Generator
     🌐  9 │ Launch Web UI
@@ -1123,7 +1150,7 @@ dbcheck/skill/dbcheck/
     ├── main_dm.py              # Dameng DM8 inspection logic
     ├── main_tidb.py             # TiDB inspection logic
     ├── analyzer.py             # Intelligent risk analysis engine
-    ├── slow_query_analyzer.py   # Slow query deep analysis engine (MySQL/PG/Oracle/SQLServer/DM8)
+    ├── slow_query_analyzer.py   # Slow query deep analysis engine (MySQL/PG/Oracle/SQLServer/DM8/YashanDB)
     └── main.py                 # Unified menu entry
 ```
 

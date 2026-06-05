@@ -228,7 +228,7 @@ def _urlretrieve_with_headers(url, filename, headers=None, callback=None):
             raise RuntimeError(
                 "Oracle 官网需要登录才能下载。请手动访问 "
                 "https://www.oracle.com/database/technologies/instant-client/downloads.html "
-                "下载后解压到 DBCheck/oracle_client/ 对应平台目录。"
+                "下载后解压到 DBCheck/drivers/oracle_client/ 对应平台目录。"
             )
         raise
 
@@ -291,7 +291,7 @@ def download_instant_client(platform_key=None, target_dir=None, progress_callbac
     Args:
         platform_key: 平台标识，如 'windows_x64', 'linux_x64', 'darwin_x64', 'darwin_arm64'
                       为 None 时自动检测
-        target_dir: 目标目录，为 None 时使用当前目录下的 oracle_client/<platform>
+        target_dir: 目标目录，为 None 时使用当前目录下的 drivers/oracle_client/<platform>
         progress_callback: 进度回调函数 func(downloaded, total)
 
     Returns:
@@ -316,7 +316,7 @@ def download_instant_client(platform_key=None, target_dir=None, progress_callbac
         }
 
     base_dir = Path(target_dir) if target_dir else Path(__file__).resolve().parent
-    install_dir = base_dir / 'oracle_client' / platform_key
+    install_dir = base_dir / 'drivers' / 'oracle_client' / platform_key
     cfg = _get_download_config(platform_key)
     if cfg is None:
         return {
@@ -392,7 +392,7 @@ def download_instant_client(platform_key=None, target_dir=None, progress_callbac
                     f'  4. 解压到: {install_dir}\n'
                     f'     (确保 oci.dll/libclntsh 等文件直接在该目录下)\n'
                     f'  5. 解压完成后点击"检查安装状态"确认\n\n'
-                    f'如需安装到自定义目录，解压到: <DBCheck目录>/oracle_client/{platform_key}/'
+                    f'如需安装到自定义目录，解压到: <DBCheck目录>/drivers/oracle_client/{platform_key}/'
                 )
             raise
 
@@ -576,7 +576,7 @@ def check_installation(platform_key=None, base_dir=None):
             return {'installed': False, 'platform': '', 'version': '', 'install_dir': ''}
 
     base = Path(base_dir) if base_dir else Path(__file__).resolve().parent
-    install_dir = base / 'oracle_client' / platform_key
+    install_dir = base / 'drivers' / 'oracle_client' / platform_key
 
     # 自动展平：处理用户手动解压后文件在 instantclient_* 子目录的情况
     _flatten_nested_client_dir(install_dir)

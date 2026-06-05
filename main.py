@@ -96,9 +96,10 @@ def print_banner():
 {CYAN}{BOLD}    {t("cli.main_menu_line6")}{RESET}
 {GREEN}{BOLD}    {t("cli.main_menu_line7")}{RESET}
 {DIM}  ──────────────────────────────────────────────────────────{RESET}
-{CYAN}{BOLD}    {t("cli.main_menu_line8")}{RESET}
+{BLUE}{BOLD}    {t("cli.main_menu_line8")}{RESET}
 {MAGENTA}{BOLD}    {t("cli.main_menu_line9")}{RESET}
-{DIM}{BOLD}    {t("cli.main_menu_line10")}{RESET}
+{MAGENTA}{BOLD}    {t("cli.main_menu_line10")}{RESET}
+{DIM}{BOLD}    {t("cli.main_menu_line11")}{RESET}
 {DIM}  ──────────────────────────────────────────────────────────{RESET}
 """
     print(art)
@@ -133,6 +134,11 @@ def _run_tidb():
 def _run_ivorysql():
     import main_ivorysql
     main_ivorysql.main()
+
+
+def _run_yashandb():
+    import main_yashandb
+    main_yashandb.main()
 
 
 def _run_oracle_full():
@@ -336,8 +342,11 @@ def main():
             print(f"\n{t('cli.main_menu_ivorysql_starting')}\n")
             _run_ivorysql()
         elif choice == '8':
-            _run_template_menu()
+            print(f"\n{t('cli.main_menu_yashandb_starting')}\n")
+            _run_yashandb()
         elif choice == '9':
+            _run_template_menu()
+        elif choice == '10':
             _run_web_ui()
         elif choice == '0':
             print(f"\n{t('cli.main_menu_exiting')}")

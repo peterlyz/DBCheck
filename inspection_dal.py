@@ -24,6 +24,7 @@ import json
 import os
 from datetime import datetime
 from typing import List, Dict, Optional, Any
+from config_baseline import _get_default_baselines
 
 
 # 数据库文件路径
@@ -159,8 +160,8 @@ def init_database(db_path: str = None):
         if 'is_preset' not in columns:
             cursor.execute("ALTER TABLE inspection_template ADD COLUMN is_preset INTEGER DEFAULT 0")
             print("🔄 已为 inspection_template 表添加 is_preset 字段")
-        # 将已有的默认模板标记为预置模板（无论列是新建还是已有，每次都确保标记）
-        cursor.execute("UPDATE inspection_template SET is_preset = 1 WHERE is_default = 1")
+        # is_preset 由 create_template 时显式指定，不应根据 is_default 自动设置
+        # is_default（巡检默认选中）和 is_preset（系统预置不可删除）是两个独立概念
         # Oracle 11g 模板也是预置模板（is_default=0 但同样不可删除）
         cursor.execute("UPDATE inspection_template SET is_preset = 1 WHERE db_type = 'oracle' AND version = '11g'")
         conn.commit()
@@ -330,19 +331,23 @@ def get_templates_by_db_type(db_type: str, db_path: str = None) -> List[Dict]:
         conn.close()
 
 
-def get_default_template(db_type: str, db_path: str = None) -> Optional[Dict]:
+def get_default_template(db_type: str, db_path: str = None,
+                         db_version_major: int = None) -> Optional[Dict]:
     """
     获取指定数据库类型的默认模板。
-    
+    Oracle 支持按版本区分：db_version_major<=11 时匹配 version='11g' 的默认模板，
+    其他版本匹配 version!='11g' 的默认模板。
+
     :param db_type: 数据库类型
     :param db_path: 数据库文件路径
+    :param db_version_major: 数据库主版本号（仅 Oracle 使用，如 11、12、19）
     :return: 默认模板信息字典，如果不存在则返回 None
     """
     conn = get_db_connection(db_path)
     cursor = conn.cursor()
-    
+
     try:
-        cursor.execute("""
+        sql = """
             SELECT id,
                    template_name_zh as template_name,
                    template_name_en,
@@ -355,8 +360,18 @@ def get_default_template(db_type: str, db_path: str = None) -> Optional[Dict]:
                    updated_at
             FROM inspection_template
             WHERE db_type = ? AND is_default = 1
-            LIMIT 1
-        """, (db_type,))
+        """
+        params = [db_type]
+
+        # Oracle 按版本分组匹配默认模板
+        if db_type == 'oracle' and db_version_major is not None:
+            if db_version_major <= 11:
+                sql += " AND version = '11g'"
+            else:
+                sql += " AND (version IS NULL OR version != '11g')"
+
+        sql += " LIMIT 1"
+        cursor.execute(sql, params)
         
         row = cursor.fetchone()
         if row:
@@ -373,6 +388,8 @@ def update_template(template_id: int, template_name: str = None,
     """
     更新巡检模板。
     预置模板（is_preset=1）不能修改模板名称和版本号。
+    设为默认时（is_default=1），自动取消同数据库类型其他模板的默认。
+    Oracle 特殊处理：11g 模板和非 11g 模板各有一个独立的默认值。
 
     :param template_id: 模板 ID
     :param template_name: 新的模板名称（如果为 None，则不更新）
@@ -407,11 +424,37 @@ def update_template(template_id: int, template_name: str = None,
 
         old_value = dict(old_row)
         is_preset = old_value.get('is_preset', 0)
+        tmpl_db_type = old_value.get('db_type')
+        tmpl_version = old_value.get('version')
 
-        # 预置模板不能修改名称和版本
+        # 预置模板不能修改名称和版本（仅在实际变更时拒绝）
         if is_preset == 1:
-            if template_name is not None or version is not None:
+            if (template_name is not None and template_name != old_value.get('template_name')) or \
+               (version is not None and version != old_value.get('version')):
                 return False
+
+        # 默认模板互斥：设为默认时，取消同类型其他模板的默认
+        # Oracle：11g 和非 11g 各一个默认；其他数据库：只有一个默认
+        if is_default == 1:
+            if tmpl_db_type == 'oracle':
+                # Oracle 按 version 分组互斥
+                if tmpl_version == '11g':
+                    cursor.execute("""
+                        UPDATE inspection_template SET is_default = 0
+                        WHERE db_type = ? AND version = '11g' AND id != ? AND is_default = 1
+                    """, (tmpl_db_type, template_id))
+                else:
+                    cursor.execute("""
+                        UPDATE inspection_template SET is_default = 0
+                        WHERE db_type = ? AND (version IS NULL OR version != '11g')
+                        AND id != ? AND is_default = 1
+                    """, (tmpl_db_type, template_id))
+            else:
+                # 非 Oracle：同类型全清
+                cursor.execute("""
+                    UPDATE inspection_template SET is_default = 0
+                    WHERE db_type = ? AND id != ? AND is_default = 1
+                """, (tmpl_db_type, template_id))
 
         # 构建更新语句
         updates = []
@@ -1136,15 +1179,40 @@ def import_template(template_config: Dict, db_path: str = None,
         elif existing_row and not overwrite:
             raise ValueError(f"模板已存在: {db_type}/{template_name}")
         
+        is_default_val = template_config.get('is_default', 0)
+
         # 创建新模板
         cursor.execute("""
-            INSERT INTO inspection_template (db_type, template_name_zh, version, description, is_default)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO inspection_template (db_type, template_name_zh, version, description, is_default, is_preset)
+            VALUES (?, ?, ?, ?, ?, ?)
         """, (db_type, template_name, version,
               template_config.get('description'),
-              template_config.get('is_default', 0)))
-        
+              is_default_val,
+              0))  # is_preset 强制为 0，导入的模板一律非预置，确保可删除
+
         template_id = cursor.lastrowid
+
+        # 默认模板互斥：如果导入模板设为默认，取消同组其它默认
+        if is_default_val == 1:
+            if db_type == 'oracle':
+                # Oracle 按 version 分组互斥：11g 一组，非 11g 一组
+                if version == '11g':
+                    cursor.execute("""
+                        UPDATE inspection_template SET is_default = 0
+                        WHERE db_type = ? AND version = '11g' AND id != ? AND is_default = 1
+                    """, (db_type, template_id))
+                else:
+                    cursor.execute("""
+                        UPDATE inspection_template SET is_default = 0
+                        WHERE db_type = ? AND (version IS NULL OR version != '11g')
+                        AND id != ? AND is_default = 1
+                    """, (db_type, template_id))
+            else:
+                # 非 Oracle：同数据库类型只能有一个默认
+                cursor.execute("""
+                    UPDATE inspection_template SET is_default = 0
+                    WHERE db_type = ? AND id != ? AND is_default = 1
+                """, (db_type, template_id))
         
         # 创建章节和查询
         for chapter_config in template_config.get('chapters', []):
@@ -1692,6 +1760,24 @@ def init_default_baselines(db_path: str = None):
             {'param_name': 'autovacuum', 'query_sql': "SHOW autovacuum", 'operator': '=', 'expected_value': 'on', 'risk_level': 'MEDIUM', 'description_zh': '自动清理（autovacuum）应开启', 'description_en': 'Autovacuum should be enabled'},
             {'param_name': 'oracle_compatibility', 'query_sql': "SELECT setting FROM pg_settings WHERE name = 'ivorysql.oracle_compatibility'", 'operator': '=', 'expected_value': 'on', 'risk_level': 'LOW', 'description_zh': 'Oracle 兼容模式应开启（仅 ORAMODE）', 'description_en': 'Oracle compatibility mode should be on (ORAMODE only)'},
         ],
+        # ═══════════════════════════════════════════
+        # YashanDB
+        # ═══════════════════════════════════════════
+        'yashandb': [
+            # ── 安全 ──
+            {'param_name': 'FAILED_LOGIN_ATTEMPTS', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='failed_login_attempts'", 'operator': '<=', 'expected_value': '5', 'risk_level': 'HIGH', 'description_zh': '登录失败尝试次数应 <= 5，防止暴力破解', 'description_en': 'Failed login attempts should be <= 5 to prevent brute force'},
+            {'param_name': 'PASSWORD_LIFE_TIME', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='password_life_time'", 'operator': '<=', 'expected_value': '180', 'risk_level': 'MEDIUM', 'description_zh': '密码有效期应 <= 180 天', 'description_en': 'Password lifetime should be <= 180 days'},
+            # ── 性能 ──
+            {'param_name': 'PROCESSES', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='processes'", 'operator': '>=', 'expected_value': '150', 'risk_level': 'MEDIUM', 'description_zh': '最大进程数应 >= 150', 'description_en': 'Processes should be >= 150'},
+            {'param_name': 'SGA_TARGET', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='sga_target'", 'operator': '>=', 'expected_value': '1073741824', 'risk_level': 'MEDIUM', 'description_zh': 'SGA 目标大小应 >= 1GB', 'description_en': 'SGA target should be >= 1GB'},
+            {'param_name': 'PGA_AGGREGATE_TARGET', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='pga_aggregate_target'", 'operator': '>=', 'expected_value': '536870912', 'risk_level': 'MEDIUM', 'description_zh': 'PGA 聚合目标应 >= 512MB', 'description_en': 'PGA aggregate target should be >= 512MB'},
+            {'param_name': 'OPEN_CURSORS', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='open_cursors'", 'operator': '>=', 'expected_value': '300', 'risk_level': 'MEDIUM', 'description_zh': '单会话最大打开游标数应 >= 300', 'description_en': 'Open cursors should be >= 300'},
+            # ── 高可用 ──
+            {'param_name': 'ARCHIVELOG_MODE', 'query_sql': "SELECT LOG_MODE FROM V$DATABASE", 'operator': '=', 'expected_value': 'ARCHIVELOG', 'risk_level': 'HIGH', 'description_zh': '数据库应运行在归档模式', 'description_en': 'Database should be in ARCHIVELOG mode'},
+            # ── 运维 ──
+            {'param_name': 'UNDO_RETENTION', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='undo_retention'", 'operator': '>=', 'expected_value': '900', 'risk_level': 'LOW', 'description_zh': 'UNDO 保留时间应 >= 900 秒', 'description_en': 'UNDO retention should be >= 900 seconds'},
+            {'param_name': 'DB_FILE_MULTIBLOCK_READ_COUNT', 'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME='db_file_multiblock_read_count'", 'operator': '>=', 'expected_value': '64', 'risk_level': 'LOW', 'description_zh': '多块读计数应 >= 64', 'description_en': 'Multiblock read count should be >= 64'},
+        ],
     }
     
     conn = get_db_connection(db_path)
@@ -1699,26 +1785,71 @@ def init_default_baselines(db_path: str = None):
     
     try:
         for db_type, baselines in default_baselines.items():
+            # 仅在该 db_type 没有任何基线时（首次使用）才插入
+            cursor.execute("SELECT COUNT(*) FROM inspection_baseline WHERE db_type = ?", (db_type,))
+            if cursor.fetchone()[0] > 0:
+                continue
             for bl in baselines:
-                # 检查是否已存在
-                cursor.execute("SELECT COUNT(*) FROM inspection_baseline WHERE db_type = ? AND param_name = ?", 
-                             (db_type, bl['param_name']))
-                if cursor.fetchone()[0] == 0:
-                    cursor.execute("""
-                        INSERT INTO inspection_baseline (
-                            db_type, param_name, query_sql, operator,
-                            expected_value, risk_level, description_zh, description_en
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (db_type, bl['param_name'], bl['query_sql'], bl['operator'],
-                           bl['expected_value'], bl['risk_level'], 
-                           bl['description_zh'], bl['description_en']))
-        
+                cursor.execute("""
+                    INSERT INTO inspection_baseline (
+                        db_type, param_name, query_sql, operator,
+                        expected_value, risk_level, description_zh, description_en
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (db_type, bl['param_name'], bl['query_sql'], bl['operator'],
+                       bl['expected_value'], bl['risk_level'],
+                       bl['description_zh'], bl['description_en']))
+
         conn.commit()
         print("✅ 默认基线配置初始化成功")
-        
+
     except Exception as e:
         conn.rollback()
         print(f"❌ 默认基线配置初始化失败: {e}")
+        raise
+    finally:
+        conn.close()
+
+
+def force_reset_baselines(db_type: str = None, db_path: str = None):
+    """手动重置基线配置。删除指定（或全部）db_type 的基线后重新插入默认值。
+    注意：此操作不可逆，用户自定义的基线将被清除。"""
+    default_baselines = _get_default_baselines()
+    # _get_default_baselines() 返回扁平列表 [{db_type, param_name, ...}, ...]
+
+    valid_types = {bl['db_type'] for bl in default_baselines}
+    if db_type and db_type not in valid_types:
+        raise ValueError(f"不支持的数据库类型: {db_type}")
+
+    filtered = [bl for bl in default_baselines if db_type is None or bl['db_type'] == db_type]
+
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+
+    try:
+        if db_type:
+            cursor.execute("DELETE FROM inspection_baseline WHERE db_type = ?", (db_type,))
+        else:
+            cursor.execute("DELETE FROM inspection_baseline")
+
+        for bl in filtered:
+            cursor.execute("""
+                INSERT INTO inspection_baseline (
+                    db_type, param_name, query_sql, operator,
+                    expected_value, risk_level, description_zh, description_en
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (bl['db_type'], bl['param_name'], bl['query_sql'], bl['operator'],
+                   bl['expected_value'], bl['risk_level'],
+                   bl['description_zh'], bl['description_en']))
+
+        conn.commit()
+        if db_type:
+            print(f"✅ {db_type} 基线配置已重置")
+        else:
+            print("✅ 所有基线配置已重置")
+
+    except Exception as e:
+        conn.rollback()
+        print(f"❌ 基线配置重置失败: {e}")
         raise
     finally:
         conn.close()

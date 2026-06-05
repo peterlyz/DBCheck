@@ -35,6 +35,7 @@ from inspection_dal import (
     get_default_template,
     get_template,
     get_all_templates,
+    init_default_baselines,
     DEFAULT_DB_PATH,
 )
 # 临时文件：MySQL 21 章配置
@@ -3351,6 +3352,198 @@ IVORYSQL_DEFAULT_CHAPTERS = [
         ]
     },
 ]
+# ==================== YashanDB 崖山数据库 ====================
+
+YASHANDB_DEFAULT_CHAPTERS = [
+    {
+        'chapter_number': 1,
+        'chapter_title_zh': '健康状态概览',
+        'chapter_title_en': 'Health Overview',
+        'description': '崖山数据库整体健康状态概览',
+        'queries': [
+            {'key': 'yashandb_version', 'sql': "SELECT BANNER FROM V$VERSION WHERE ROWNUM=1",
+             'desc_zh': 'YashanDB 版本信息',         'desc_en': 'YashanDB version'},
+            {'key': 'yashandb_instance', 'sql': "SELECT INSTANCE_NAME, STATUS, DATABASE_STATUS FROM V$INSTANCE",
+             'desc_zh': '实例状态',              'desc_en': 'Instance status'},
+            {'key': 'yashandb_uptime', 'sql': "SELECT EXTRACT(DAY FROM (SYSTIMESTAMP - STARTUP_TIME))*24*60 + EXTRACT(HOUR FROM (SYSTIMESTAMP - STARTUP_TIME))*60 + EXTRACT(MINUTE FROM (SYSTIMESTAMP - STARTUP_TIME)) AS uptime_minutes FROM V$INSTANCE",
+             'desc_zh': '数据库运行时长（分钟）',      'desc_en': 'Database uptime (minutes)'},
+        ]
+    },
+    {
+        'chapter_number': 2,
+        'chapter_title_zh': '连接与会话',
+        'chapter_title_en': 'Connections & Sessions',
+        'description': '数据库连接和会话状态',
+        'queries': [
+            {'key': 'yashandb_sessions', 'sql': "SELECT STATUS, COUNT(*) AS cnt FROM V$SESSION GROUP BY STATUS",
+             'desc_zh': '会话状态分布',           'desc_en': 'Session status breakdown'},
+            {'key': 'yashandb_sessions_by_user', 'sql': "SELECT USERNAME, COUNT(*) AS cnt FROM V$SESSION WHERE USERNAME IS NOT NULL GROUP BY USERNAME ORDER BY cnt DESC",
+             'desc_zh': '按用户会话统计',          'desc_en': 'Sessions by user'},
+            {'key': 'yashandb_process_count', 'sql': "SELECT COUNT(*) AS process_count FROM V$PROCESS",
+             'desc_zh': '后台进程数',            'desc_en': 'Background process count'},
+        ]
+    },
+    {
+        'chapter_number': 3,
+        'chapter_title_zh': '性能统计',
+        'chapter_title_en': 'Performance Statistics',
+        'description': '数据库关键性能指标',
+        'queries': [
+            {'key': 'yashandb_sysstat', 'sql': "SELECT NAME, VALUE FROM V$SYSSTAT WHERE NAME IN ('parse count (total)', 'parse count (hard)', 'execute count', 'logical reads', 'physical reads', 'sorts (disk)', 'sorts (memory)') ORDER BY NAME",
+             'desc_zh': '系统性能统计',           'desc_en': 'System performance statistics'},
+            {'key': 'yashandb_load_profile', 'sql': "SELECT NAME AS metric_name, VALUE FROM V$SYSSTAT WHERE NAME IN ('parse count (total)', 'parse count (hard)', 'execute count', 'logical reads', 'physical reads total', 'user commits', 'user rollbacks') ORDER BY NAME",
+             'desc_zh': '系统负载概况',           'desc_en': 'System load profile'},
+        ]
+    },
+    {
+        'chapter_number': 4,
+        'chapter_title_zh': '表空间与存储',
+        'chapter_title_en': 'Tablespaces & Storage',
+        'description': '表空间使用情况和存储配置',
+        'queries': [
+            {'key': 'yashandb_tbs_usage', 'sql': "SELECT TABLESPACE_NAME, ROUND(SUM(BYTES)/1024/1024, 2) AS total_mb FROM DBA_DATA_FILES GROUP BY TABLESPACE_NAME ORDER BY total_mb DESC",
+             'desc_zh': '表空间数据文件总大小',       'desc_en': 'Tablespace datafile sizes'},
+            {'key': 'yashandb_tbs_free', 'sql': "SELECT TABLESPACE_NAME, ROUND(SUM(BYTES)/1024/1024, 2) AS free_mb FROM DBA_FREE_SPACE GROUP BY TABLESPACE_NAME ORDER BY free_mb DESC",
+             'desc_zh': '表空间空闲空间',          'desc_en': 'Tablespace free space'},
+            {'key': 'yashandb_tbs_properties', 'sql': "SELECT TABLESPACE_NAME, STATUS, CONTENTS, LOGGING FROM DBA_TABLESPACES ORDER BY TABLESPACE_NAME",
+             'desc_zh': '表空间属性',            'desc_en': 'Tablespace properties'},
+        ]
+    },
+    {
+        'chapter_number': 5,
+        'chapter_title_zh': '数据库对象',
+        'chapter_title_en': 'Database Objects',
+        'description': '数据库对象统计',
+        'queries': [
+            {'key': 'yashandb_objects_summary', 'sql': "SELECT OWNER, OBJECT_TYPE, COUNT(*) AS cnt FROM DBA_OBJECTS GROUP BY OWNER, OBJECT_TYPE ORDER BY cnt DESC FETCH FIRST 20 ROWS ONLY",
+             'desc_zh': '数据库对象统计 TOP 20',    'desc_en': 'Top 20 object counts'},
+            {'key': 'yashandb_objects_by_type', 'sql': "SELECT OBJECT_TYPE, COUNT(*) AS cnt FROM DBA_OBJECTS GROUP BY OBJECT_TYPE ORDER BY cnt DESC",
+             'desc_zh': '按类型对象统计',          'desc_en': 'Objects by type'},
+            {'key': 'yashandb_invalid_objects', 'sql': "SELECT OWNER, OBJECT_NAME, OBJECT_TYPE FROM DBA_OBJECTS WHERE STATUS='INVALID' FETCH FIRST 30 ROWS ONLY",
+             'desc_zh': '无效对象',             'desc_en': 'Invalid objects'},
+        ]
+    },
+    {
+        'chapter_number': 6,
+        'chapter_title_zh': '锁与等待事件',
+        'chapter_title_en': 'Locks & Wait Events',
+        'description': '当前锁情况和等待事件',
+        'queries': [
+            {'key': 'yashandb_locks', 'sql': "SELECT 'N/A' AS sid, 'N/A' AS lock_type, 0 AS mode FROM DUAL WHERE 1=0\n-- YashanDB V$LOCK 列名与 Oracle 不同，建议使用 SELECT * FROM V$LOCK 查看实际列",
+             'desc_zh': '当前锁信息',            'desc_en': 'Current locks'},
+            {'key': 'yashandb_wait_events', 'sql': "SELECT EVENT, TOTAL_WAITS, TIME_WAITED FROM V$SYSTEM_EVENT WHERE TOTAL_WAITS > 0 ORDER BY TIME_WAITED DESC FETCH FIRST 15 ROWS ONLY",
+             'desc_zh': '系统等待事件 TOP 15',    'desc_en': 'Top 15 system wait events'},
+        ]
+    },
+    {
+        'chapter_number': 7,
+        'chapter_title_zh': 'SQL 执行统计',
+        'chapter_title_en': 'SQL Execution Statistics',
+        'description': 'SQL 执行计划缓存和性能统计',
+        'queries': [
+            {'key': 'yashandb_sql_top_elapsed', 'sql': "SELECT SQL_ID, ELAPSED_TIME, EXECUTIONS, ROUND(ELAPSED_TIME/NULLIF(EXECUTIONS,0)/1000000, 2) AS avg_elapsed_s, SQL_TEXT FROM V$SQL ORDER BY ELAPSED_TIME DESC FETCH FIRST 10 ROWS ONLY",
+             'desc_zh': '耗时 TOP 10 SQL',       'desc_en': 'Top 10 SQL by elapsed time'},
+            {'key': 'yashandb_sql_top_logical', 'sql': "SELECT SQL_ID, BUFFER_GETS, EXECUTIONS, ROUND(BUFFER_GETS/NULLIF(EXECUTIONS,0), 2) AS avg_logical_reads FROM V$SQL WHERE EXECUTIONS > 0 ORDER BY BUFFER_GETS DESC FETCH FIRST 10 ROWS ONLY",
+             'desc_zh': '逻辑读 TOP 10 SQL',     'desc_en': 'Top 10 SQL by logical reads'},
+        ]
+    },
+    {
+        'chapter_number': 8,
+        'chapter_title_zh': '内存管理',
+        'chapter_title_en': 'Memory Management',
+        'description': '数据库内存分配和使用',
+        'queries': [
+            {'key': 'yashandb_memory', 'sql': "SELECT NAME, ROUND(SIZE/1024/1024, 2) AS current_mb FROM V$SGA ORDER BY SIZE DESC",
+             'desc_zh': 'SGA 内存组件分配',       'desc_en': 'SGA memory component allocation'},
+            {'key': 'yashandb_sga', 'sql': "SELECT NAME, ROUND(SIZE/1024/1024, 2) AS value_mb FROM V$SGA ORDER BY SIZE DESC",
+             'desc_zh': 'SGA 内存总览',          'desc_en': 'SGA memory overview'},
+        ]
+    },
+    {
+        'chapter_number': 9,
+        'chapter_title_zh': '参数配置',
+        'chapter_title_en': 'Parameter Configuration',
+        'description': '关键初始化参数',
+        'queries': [
+            {'key': 'yashandb_parameters', 'sql': "SELECT NAME, VALUE, DEFAULT_VALUE FROM V$PARAMETER WHERE NAME IN ('db_block_size', 'processes', 'sessions', 'open_cursors', 'sort_area_size', 'hash_area_size', 'db_file_multiblock_read_count', 'log_buffer', 'shared_pool_size', 'buffer_pool_size') ORDER BY NAME",
+             'desc_zh': '关键参数配置',           'desc_en': 'Key parameters'},
+        ]
+    },
+    {
+        'chapter_number': 10,
+        'chapter_title_zh': '日志与归档',
+        'chapter_title_en': 'Logs & Archival',
+        'description': 'Redo 日志和归档配置',
+        'queries': [
+            {'key': 'yashandb_logfiles', 'sql': "SELECT 'N/A' AS id, 'N/A' AS file_name, 'N/A' AS status FROM DUAL WHERE 1=0\n-- YashanDB V$LOGFILE 列名与 Oracle 不同，建议使用 SELECT * FROM V$LOGFILE 查看实际列",
+             'desc_zh': 'Redo 日志文件',         'desc_en': 'Redo log files'},
+            {'key': 'yashandb_log_groups', 'sql': "SELECT 'N/A' AS group_id, 'N/A' AS status, 0 AS bytes FROM DUAL WHERE 1=0\n-- YashanDB 无 V$LOG 视图，建议使用 SELECT * FROM V$LOGFILE 查看日志信息",
+             'desc_zh': 'Redo 日志文件状态',      'desc_en': 'Redo log file status'},
+            {'key': 'yashandb_archive_mode', 'sql': "SELECT LOG_MODE FROM V$DATABASE",
+             'desc_zh': '归档模式',             'desc_en': 'Archive log mode'},
+        ]
+    },
+    {
+        'chapter_number': 11,
+        'chapter_title_zh': '安全信息',
+        'chapter_title_en': 'Security Information',
+        'description': '用户账户和权限安全',
+        'queries': [
+            {'key': 'yashandb_users', 'sql': "SELECT USERNAME, ACCOUNT_STATUS, LOCK_DATE, EXPIRY_DATE FROM DBA_USERS ORDER BY USERNAME",
+             'desc_zh': '用户账户状态',           'desc_en': 'User account status'},
+            {'key': 'yashandb_users_by_role', 'sql': "SELECT GRANTEE, GRANTED_ROLE FROM DBA_ROLE_PRIVS WHERE GRANTEE NOT LIKE '%_%' ORDER BY GRANTEE",
+             'desc_zh': '用户角色授权',           'desc_en': 'User role grants'},
+            {'key': 'yashandb_failed_logins', 'sql': "SELECT 'N/A' AS username, 0 AS fail_count FROM DUAL WHERE 1=0  /* YashanDB 暂无 DBA_LOGIN_FAILURES 视图 */",
+             'desc_zh': '登录失败统计（YashanDB 暂不支持）',  'desc_en': 'Failed login stats (not supported in YashanDB)'},
+        ]
+    },
+    {
+        'chapter_number': 12,
+        'chapter_title_zh': '索引信息',
+        'chapter_title_en': 'Index Information',
+        'description': '索引统计和状态',
+        'queries': [
+            {'key': 'yashandb_indexes_by_owner', 'sql': "SELECT OWNER, COUNT(*) AS idx_count FROM DBA_INDEXES WHERE OWNER NOT IN ('SYS', 'SYSTEM', 'YASHANDB') GROUP BY OWNER ORDER BY idx_count DESC FETCH FIRST 20 ROWS ONLY",
+             'desc_zh': '按用户索引统计',          'desc_en': 'Indexes by owner'},
+            {'key': 'yashandb_unusable_indexes', 'sql': "SELECT OWNER, INDEX_NAME, TABLE_NAME, STATUS FROM DBA_INDEXES WHERE STATUS='UNUSABLE'",
+             'desc_zh': '不可用索引',            'desc_en': 'Unusable indexes'},
+        ]
+    },
+    {
+        'chapter_number': 13,
+        'chapter_title_zh': '表统计信息',
+        'chapter_title_en': 'Table Statistics',
+        'description': '大表和统计信息',
+        'queries': [
+            {'key': 'yashandb_large_tables', 'sql': "SELECT OWNER, TABLE_NAME, NUM_ROWS, ROUND(BLOCKS*8/1024, 2) AS size_mb FROM DBA_TABLES WHERE OWNER NOT IN ('SYS', 'SYSTEM', 'YASHANDB') AND NUM_ROWS IS NOT NULL ORDER BY BLOCKS DESC FETCH FIRST 20 ROWS ONLY",
+             'desc_zh': '大表 TOP 20',          'desc_en': 'Top 20 large tables'},
+            {'key': 'yashandb_tables_no_stats', 'sql': "SELECT OWNER, TABLE_NAME FROM DBA_TABLES WHERE OWNER NOT IN ('SYS', 'SYSTEM', 'YASHANDB') AND LAST_ANALYZED IS NULL FETCH FIRST 20 ROWS ONLY",
+             'desc_zh': '未分析统计信息的表',       'desc_en': 'Tables without statistics'},
+        ]
+    },
+    {
+        'chapter_number': 14,
+        'chapter_title_zh': '数据文件详情',
+        'chapter_title_en': 'Data File Details',
+        'description': '数据文件列表和状态',
+        'queries': [
+            {'key': 'yashandb_datafiles', 'sql': "SELECT FILE_ID, TABLESPACE_NAME, FILE_NAME, ROUND(BYTES/1024/1024, 2) AS size_mb, AUTOEXTENSIBLE FROM DBA_DATA_FILES ORDER BY TABLESPACE_NAME, FILE_ID",
+             'desc_zh': '数据文件列表',           'desc_en': 'Data file list'},
+        ]
+    },
+    {
+        'chapter_number': 15,
+        'chapter_title_zh': '备份信息',
+        'chapter_title_en': 'Backup Information',
+        'description': '备份相关状态',
+        'queries': [
+            {'key': 'yashandb_backup_config', 'sql': "SELECT 'N/A' AS config_name, 'N/A' AS config_value FROM DUAL WHERE 1=0  /* YashanDB 暂无 V$BACKUP_CONFIGURATION 视图 */",
+             'desc_zh': '备份配置（YashanDB 暂不支持）',   'desc_en': 'Backup configuration (not supported in YashanDB)'},
+        ]
+    },
+]
+
+
 # ==================== 初始化函数 ====================
 
 def init_default_templates(db_path: str = None, force: bool = False):
@@ -3373,6 +3566,7 @@ def init_default_templates(db_path: str = None, force: bool = False):
         ('dm8',       'DM8 达梦默认巡检模板',      'DM8 Default Inspection Template',          DM8_DEFAULT_CHAPTERS,          'v1', 1, 1),
         ('tidb',      'TiDB 默认巡检模板',          'TiDB Default Inspection Template',          TIDB_DEFAULT_CHAPTERS,          'v1', 1, 1),
         ('ivorysql',  'IvorySQL 默认巡检模板',    'IvorySQL Default Inspection Template',    IVORYSQL_DEFAULT_CHAPTERS,    'v1', 1, 1),
+        ('yashandb',  'YashanDB 默认巡检模板',    'YashanDB Default Inspection Template',    YASHANDB_DEFAULT_CHAPTERS,    'v1', 1, 1),
     ]
 
     for db_type, template_name, template_name_en, chapters, version, is_default, is_preset in db_types:
@@ -3464,6 +3658,10 @@ def main():
     # 初始化默认模板
     print("\n2. 创建默认模板（含预置 SQL）...")
     init_default_templates(db_path, args.force)
+
+    # 初始化默认基线配置
+    print("\n3. 初始化默认基线配置...")
+    init_default_baselines(db_path)
 
     print("\n" + "=" * 50)
     print("✅ 初始化完成！")

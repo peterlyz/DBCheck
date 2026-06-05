@@ -57,16 +57,17 @@
                             <option value="mysql">MySQL</option>
                             <option value="postgresql">PostgreSQL</option>
                             <option value="ivorysql">IvorySQL</option>
+                            <option value="yashandb">YashanDB</option>
                             <option value="sqlserver">SQL Server</option>
                             <option value="tidb">TiDB</option>
                         </select>
                     </div>
                     <div>
-                        <button id="btn-init-baselines" class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-magic"></i> {{ _('baseline.init_default') }}
-                        </button>
                         <button id="btn-add-baseline" class="btn btn-primary btn-sm">
                             <i class="fas fa-plus"></i> {{ _('baseline.add') }}
+                        </button>
+                        <button onclick="forceResetBaselines()" class="btn btn-danger btn-sm" style="margin-left:8px">
+                            <i class="fas fa-exclamation-triangle"></i> {{ _('baseline.force_reset', default='强制重置基线') }}
                         </button>
                     </div>
                 </div>
@@ -117,6 +118,7 @@
                                     <option value="mysql">MySQL</option>
                                     <option value="postgresql">PostgreSQL</option>
                                     <option value="ivorysql">IvorySQL</option>
+                                    <option value="yashandb">YashanDB</option>
                                     <option value="sqlserver">SQL Server</option>
                                     <option value="tidb">TiDB</option>
                                 </select>

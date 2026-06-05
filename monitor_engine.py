@@ -398,6 +398,10 @@ class MonitorEngine:
                 client_encoding='UTF8', connect_timeout=timeout,
             )
 
+        elif db_type == 'yashandb':
+            import yasdb
+            return yasdb.connect(host=host, port=port, user=user, password=password)
+
         else:
             raise ValueError(f"不支持的数据库类型: {db_type}")
 

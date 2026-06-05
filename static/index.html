@@ -3072,7 +3072,7 @@ function formatBytes(bytes) {
       function onDsDbTypeChange() {
         const dbType = document.getElementById('ds-db-type').value;
         const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5432};
-        const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres'};
+        const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres', yashandb:'sys'};
         document.getElementById('ds-port').value = portMap[dbType] || 3306;
         const userEl = document.getElementById('ds-user');
         // 类型改变时强制更新用户名
@@ -3548,7 +3548,7 @@ function formatBytes(bytes) {
         </div>
 
         <!-- 核心功能区 -->
-        <div class="home-section">
+        <div class="home-section" style="margin-top:24px;">
           <div class="section-header">
             <h2 class="section-title" data-i18n="webui.home_section_title">核心功能</h2>
             <span class="section-desc" data-i18n="webui.home_section_desc">一站式数据库健康巡检解决方案</span>
@@ -3662,7 +3662,7 @@ function formatBytes(bytes) {
                 <div class="tc-logo"><img src="/tidb.png" alt="DBCheck" style="width:36px;height:36px;"></div>
                 <div class="tc-check" id="chk-tidb"></div>
               </div>
-              <div class="tc-name-row"><span data-i18n="webui.db_tidb_name">TiDB</span><span class="beta-tag">Beta</span></div>
+              <div class="tc-name" data-i18n="webui.db_tidb_name">TiDB</div>
               <div class="tc-desc" data-i18n="webui.db_tidb_desc">适用于 TiDB 6.5+ / MySQL 8.0 兼容集群，采集集群拓扑、存储、事务、SQL 统计等核心指标。</div>
             </div>
             <div class="type-card" id="tc-ivorysql" onclick="selectDbType('ivorysql')">
@@ -3672,6 +3672,14 @@ function formatBytes(bytes) {
               </div>
               <div class="tc-name" data-i18n="webui.db_ivorysql_name">IvorySQL</div>
               <div class="tc-desc" data-i18n="webui.db_ivorysql_desc">适用于瀚高 IvorySQL（PostgreSQL + Oracle 兼容），复用 PG 巡检模板并增加 Oracle 兼容模式检查。</div>
+            </div>
+            <div class="type-card" id="tc-yashandb" onclick="selectDbType('yashandb')">
+              <div class="tc-header">
+                <div class="tc-logo"><img src="/yashandb.png" alt="YashanDB" style="height:36px;width:auto;"></div>
+                <div class="tc-check" id="chk-yashandb"></div>
+              </div>
+              <div class="tc-name-row"><span data-i18n="webui.db_yashandb_name">YashanDB</span><span class="beta-tag">Beta</span></div>
+              <div class="tc-desc" data-i18n="webui.db_yashandb_desc">适用于崖山 YashanDB V23+ 实例，采集会话、锁、表空间、SQL 性能等核心指标。</div>
             </div>
           </div>
           <div class="btn-row">
@@ -4443,7 +4451,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
       <!-- ══ Page: Oracle Client Settings ══ -->
       <div class="page" id="page-oracle-client">
         <div class="card">
-          <div class="card-title"><span>🗄️</span> <span data-i18n="webui.oracle_client_title">Oracle Client 设置</span></div>
+          <div class="card-title"><span>🔧</span> <span data-i18n="webui.oracle_client_title">数据库客户端设置</span></div>
           <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line" data-i18n="webui.oracle_client_desc">
             Oracle 11g 及以下版本需要 Oracle Instant Client 才能连接。<br/>
             请指定 Instant Client 的安装路径（包含 <code>oci.dll</code> / <code>libclntsh.so</code> 的目录）。<br/>
@@ -4911,6 +4919,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
           <div id="inspection-template-list-page">
             <div class="page-toolbar">
               <button class="btn btn-primary btn-sm" onclick="showInspectionTemplateEdit(null)" data-i18n="webui.inspection_create_template">创建模板</button>
+              <button class="btn btn-sm" onclick="importInspectionTemplate()" data-i18n="webui.inspection_import">导入</button>
             </div>
             <div id="inspection-template-list" class="inspection-template-list">
               <!-- 动态加载模板列表 -->
@@ -4924,7 +4933,6 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <button class="btn btn-primary btn-sm" onclick="saveInspectionTemplate()" data-i18n="webui.inspection_save_template">保存模板</button>
               <button class="btn btn-sm btn-primary" onclick="addInspectionChapter()" data-i18n="webui.inspection_add_chapter">添加章节</button>
               <button class="btn btn-sm" onclick="exportInspectionTemplate()" data-i18n="webui.inspection_export" style="display:none;">导出</button>
-              <button class="btn btn-sm" onclick="importInspectionTemplate()" data-i18n="webui.inspection_import" style="display:none;">导入</button>
             </div>
             <!-- 模板信息编辑区 -->
             <div class="inspection-template-info">
@@ -5577,6 +5585,7 @@ function selectDbType(type, skipReload) {
   document.getElementById('tc-sqlserver').classList.toggle('selected', type === 'sqlserver');
   document.getElementById('tc-tidb').classList.toggle('selected', type === 'tidb');
   document.getElementById('tc-ivorysql').classList.toggle('selected', type === 'ivorysql');
+  document.getElementById('tc-yashandb').classList.toggle('selected', type === 'yashandb');
   document.getElementById('chk-mysql').textContent = type === 'mysql' ? '✓' : '';
   document.getElementById('chk-pg').textContent   = type === 'pg'    ? '✓' : '';
   document.getElementById('chk-dm').textContent = type === 'dm' ? '✓' : '';
@@ -5584,9 +5593,10 @@ function selectDbType(type, skipReload) {
   document.getElementById('chk-sqlserver').textContent = type === 'sqlserver' ? '✓' : '';
   document.getElementById('chk-tidb').textContent = type === 'tidb' ? '✓' : '';
   document.getElementById('chk-ivorysql').textContent = type === 'ivorysql' ? '✓' : '';
+  document.getElementById('chk-yashandb').textContent = type === 'yashandb' ? '✓' : '';
   // 默认端口 & 用户名
-  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432 };
-  const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres' };
+  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432, yashandb: 1688 };
+  const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres', yashandb: 'sys' };
   document.getElementById('f-port').value = portMap[type] || 3306;
   document.getElementById('f-user').value = userMap[type] || 'root';
   document.getElementById('f-database-wrap').style.display = (type === 'pg' || type === 'ivorysql') ? '' : 'none';
@@ -5966,7 +5976,7 @@ function fillConfirmPanel() {
   };
   const nameDefaults = { mysql: 'MySQL_Server', pg: 'PG_Server', oracle: 'Oracle_Server', dm: 'DM8_Server', sqlserver: 'SQLServer', tidb: 'TiDB_Cluster' };
   const portDefaults = { mysql: '3306', pg: '5432', oracle: '1521', dm: '5236', sqlserver: '1433', tidb: '4000' };
-  const userDefaults = { mysql: 'root', pg: 'postgres', oracle: 'system', dm: 'SYSDBA', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres' };
+  const userDefaults = { mysql: 'root', pg: 'postgres', oracle: 'system', dm: 'SYSDBA', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres', yashandb: 'sys' };
   const typeLabel = typeLabels[dbType] || dbType;
   const name = document.getElementById('f-name').value.trim() || (nameDefaults[dbType]||'_Server');
   const host = document.getElementById('f-host').value.trim() || 'localhost';
@@ -7740,6 +7750,8 @@ function showAddJobForm() {
       {value:'dm', label:'达梦 DM8'},
       {value:'sqlserver', label:'SQL Server'},
       {value:'tidb', label:'TiDB'},
+      {value:'ivorysql', label:'IvorySQL'},
+      {value:'yashandb', label:'YashanDB'},
     ];
     dbTypes.forEach(t => {
       const opt = document.createElement('option');

@@ -16,6 +16,7 @@ import gevent.monkey
 gevent.monkey.patch_all()
 
 import os, sys, platform, threading, datetime, json, uuid, time, re, random, sqlite3
+from pathlib import Path
 
 # ── 确保项目根目录在 sys.path（支持各种启动方式）──────────────────
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -72,6 +73,7 @@ def _parse_report_filename(name: str):
         ('SQLServer巡检报告_', 'sqlserver'),
         ('TiDB巡检报告_', 'tidb'),
         ('IvorySQL巡检报告_', 'ivorysql'),
+        ('YashanDB巡检报告_', 'yashandb'),
     ]
     name_no_ext = name.replace('.docx', '')
     for prefix, db_type in mapping:
@@ -437,6 +439,23 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
             err_module_key='webui.err_dm_module',
             label_default='DM8',
             db_name_default='DAMENG',
+        ),
+        'yashandb': dict(
+            module_name='main_yashandb',
+            connect_test=test_yashandb_connection,
+            connect_test_args=lambda info: [info['ip'], info['port'], info['user'], info['password']],
+            getdata_args=lambda info: ([info['ip'], info['port'], info['user'], info['password']],
+                                       {'ssh_info': {}, 'template_id': template_id}),
+            conn_attr='conn_db',
+            smart_analyze='smart_analyze_yashandb',
+            filename_key='webui.yashandb_report_filename',
+            history_db_type='yashandb',
+            instance_prefix='yashandb',
+            error_task_name='YashanDB',
+            log_start_key='webui.log_yashandb_start',
+            err_module_key='webui.err_yashandb_module',
+            label_default='YashanDB',
+            db_name_default='YASHANDB',
         ),
         'oracle': dict(
             module_name='main_oracle_full',
@@ -929,7 +948,7 @@ def test_oracle_connection(host, port, user, password, service_name='ORCL', sysd
                         _sub, _mk = None, None
                     if _sub:
                         _base = os.path.dirname(os.path.abspath(__file__))
-                        _bd = os.path.join(_base, 'oracle_client', _sub)
+                        _bd = os.path.join(_base, 'drivers', 'oracle_client', _sub)
                         if os.path.isdir(_bd) and os.path.isfile(os.path.join(_bd, _mk)):
                             try:
                                 oracledb.init_oracle_client(lib_dir=_bd)
@@ -937,7 +956,7 @@ def test_oracle_connection(host, port, user, password, service_name='ORCL', sysd
                             except Exception:
                                 pass
                 if not _ok:
-                    return False, 'Oracle 11g 需要 Instant Client，请将包解压到 oracle_client/windows_x64 目录'
+                    return False, 'Oracle 11g 需要 Instant Client，请将包解压到 drivers/oracle_client/windows_x64 目录'
                 conn = oracledb.connect(**kw)
             else:
                 raise
@@ -956,6 +975,20 @@ def test_dm_connection(host, port, user, password):
         conn = dmPython.connect(user=user, password=password, server=host, port=int(port))
         cur = conn.cursor()
         cur.execute("SELECT STATUS$ FROM V$INSTANCE")
+        ver = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return True, ver
+    except Exception as e:
+        return False, str(e)
+
+
+def test_yashandb_connection(host, port, user, password):
+    try:
+        import yasdb
+        conn = yasdb.connect(host=host, port=int(port), user=user, password=password)
+        cur = conn.cursor()
+        cur.execute("SELECT BANNER FROM V$VERSION WHERE ROWNUM=1")
         ver = cur.fetchone()[0]
         cur.close()
         conn.close()
@@ -1330,6 +1363,7 @@ def api_get_config():
         cfg = json.load(f)
     return jsonify({
         'oracle_client_lib_dir': cfg.get('oracle_client_lib_dir', ''),
+        'yashandb_driver_lib_dir': cfg.get('yashandb_driver_lib_dir', ''),
         'language': cfg.get('language', 'zh'),
         'notification': cfg.get('notification', {'enabled': False})
     })
@@ -1344,6 +1378,8 @@ def api_save_config():
             existing = json.load(f)
     if 'oracle_client_lib_dir' in data:
         existing['oracle_client_lib_dir'] = data['oracle_client_lib_dir']
+    if 'yashandb_driver_lib_dir' in data:
+        existing['yashandb_driver_lib_dir'] = data['yashandb_driver_lib_dir']
     if 'notification' in data:
         existing['notification'] = data['notification']
     with open(cfg_path, 'w', encoding='utf-8') as f:
@@ -1374,7 +1410,7 @@ def _check_oracle_client_installed(platform_key=None):
     if platform_key is None:
         platform_key = _get_oracle_platform_key()
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    install_dir = os.path.join(base_dir, 'oracle_client', platform_key)
+    install_dir = os.path.join(base_dir, 'drivers', 'oracle_client', platform_key)
 
     # 检测标记文件（基本库 + 核心运行时）
     if platform_key == 'windows_x64':
@@ -1420,6 +1456,25 @@ def api_oracle_client_status():
     platform_key = request.args.get('platform') or None
     result = _check_oracle_client_installed(platform_key)
     return jsonify(result)
+
+
+@app.route('/api/yashandb_driver_status', methods=['GET'])
+def api_yashandb_driver_status():
+    """获取 YashanDB 驱动安装状态"""
+    try:
+        import download_drivers
+        import importlib
+        importlib.reload(download_drivers)
+        result = download_drivers.check_all_drivers()
+        yashandb = result.get('yashandb', {})
+        return jsonify({
+            'installed': yashandb.get('installed', False),
+            'platform': yashandb.get('platform', ''),
+            'install_dir': yashandb.get('install_dir', ''),
+            'version': 'unknown'
+        })
+    except Exception as e:
+        return jsonify({'installed': False, 'platform': '', 'install_dir': '', 'version': 'unknown', 'error': str(e)})
 
 
 @app.route('/api/oracle_client_download', methods=['POST'])
@@ -1543,6 +1598,9 @@ def api_test_db():
         result = {'ok': ok, 'msg': msg}
     elif db_type == 'ivorysql':
         ok, msg = test_ivorysql_connection(data['host'], data['port'], data['user'], data['password'], data.get('database', 'postgres'))
+        result = {'ok': ok, 'msg': msg}
+    elif db_type == 'yashandb':
+        ok, msg = test_yashandb_connection(data['host'], data['port'], data['user'], data['password'])
         result = {'ok': ok, 'msg': msg}
     else:
         return jsonify({'ok': False, 'msg': _t('webui.err_unknown_db_type')})
@@ -1724,7 +1782,7 @@ from inspection_dal import (
     delete_query, export_template, import_template,
     init_database as icfg_init_db,
     create_baseline, get_baselines_by_db_type, get_baseline,
-    update_baseline, delete_baseline, init_default_baselines,
+    update_baseline, delete_baseline, init_default_baselines, force_reset_baselines,
 )
 
 # ── 基线配置 API ───────────────────────────────────────────
@@ -1733,7 +1791,6 @@ from inspection_dal import (
 def api_list_baselines():
     """获取基线配置列表"""
     try:
-        icfg_init_db()
         db_type = request.args.get('db_type', '')
         if db_type:
             rows = get_baselines_by_db_type(db_type, enabled_only=False)
@@ -1752,7 +1809,6 @@ def api_list_baselines():
 def api_create_baseline():
     """新增基线配置"""
     try:
-        icfg_init_db()
         d = request.json
         bid = create_baseline(
             db_type=d.get('db_type', ''), param_name=d.get('param_name', ''),
@@ -1773,7 +1829,6 @@ def api_create_baseline():
 def api_get_baseline(bid):
     """获取单条基线配置"""
     try:
-        icfg_init_db()
         row = get_baseline(bid)
         if row:
             return jsonify({'success': True, 'data': row})
@@ -1786,7 +1841,6 @@ def api_get_baseline(bid):
 def api_update_baseline(bid):
     """更新基线配置"""
     try:
-        icfg_init_db()
         d = request.json
         update_baseline(
             bid,
@@ -1809,7 +1863,6 @@ def api_update_baseline(bid):
 def api_delete_baseline(bid):
     """删除基线配置"""
     try:
-        icfg_init_db()
         delete_baseline(bid)
         return jsonify({'success': True, 'message': '删除成功'})
     except Exception as e:
@@ -1818,11 +1871,28 @@ def api_delete_baseline(bid):
 
 @app.route('/api/inspection/baselines/init', methods=['POST'])
 def api_init_default_baselines():
-    """初始化默认基线配置"""
+    """初始化默认基线配置（仅在首次使用该 db_type 时自动插入，不会覆盖已有数据）"""
     try:
-        icfg_init_db()
         init_default_baselines()
         return jsonify({'success': True, 'message': '默认基线配置初始化成功'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/inspection/baselines/reset', methods=['POST'])
+def api_force_reset_baselines():
+    """手动强制重置基线配置。清空指定（或全部）db_type 的基线后重新插入默认值。
+    注意：此操作不可逆，用户自定义的基线将被清除。"""
+    try:
+        icfg_init_db()
+        data = request.get_json(silent=True) or {}
+        db_type = data.get('db_type')
+        force_reset_baselines(db_type=db_type)
+        if db_type:
+            msg = f'{db_type} 基线配置已重置'
+        else:
+            msg = '所有基线配置已重置'
+        return jsonify({'success': True, 'message': msg})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -1833,7 +1903,6 @@ def api_init_default_baselines():
 def api_list_icfg_templates():
     """获取巡检模板列表，支持按 db_type 过滤"""
     try:
-        icfg_init_db()
         db_type = request.args.get('db_type')
         # 前端 db_type 简称 → 数据库 template 全称映射
         _DB_TYPE_MAP = {'pg': 'postgresql', 'dm': 'dm8', 'ivorysql': 'ivorysql'}
@@ -1851,7 +1920,6 @@ def api_list_icfg_templates():
 def api_create_icfg_template():
     """创建巡检模板"""
     try:
-        icfg_init_db()
         d = request.json
         tid = create_template(
             db_type=d.get('db_type', ''),
@@ -1870,7 +1938,6 @@ def api_create_icfg_template():
 def api_get_icfg_template(tid):
     """获取巡检模板详情"""
     try:
-        icfg_init_db()
         row = get_template(tid)
         if row:
             return jsonify({'success': True, 'data': row})
@@ -1883,15 +1950,16 @@ def api_get_icfg_template(tid):
 def api_update_icfg_template(tid):
     """更新巡检模板"""
     try:
-        icfg_init_db()
         d = request.json
-        update_template(
+        result = update_template(
             tid,
             template_name=d.get('template_name'),
             version=d.get('version'),
             description=d.get('description'),
             is_default=d.get('is_default'),
         )
+        if not result:
+            return jsonify({'success': False, 'message': '预置模板不能修改名称和版本'})
         return jsonify({'success': True, 'message': '模板更新成功'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
@@ -1901,7 +1969,6 @@ def api_update_icfg_template(tid):
 def api_delete_icfg_template(tid):
     """删除巡检模板（级联删除章节和查询）"""
     try:
-        icfg_init_db()
         delete_template(tid)
         return jsonify({'success': True, 'message': '模板删除成功'})
     except Exception as e:
@@ -1912,7 +1979,6 @@ def api_delete_icfg_template(tid):
 def api_export_icfg_template(tid):
     """导出巡检模板（含章节和查询）"""
     try:
-        icfg_init_db()
         data = export_template(tid)
         return jsonify({'success': True, 'data': data})
     except Exception as e:
@@ -1923,7 +1989,6 @@ def api_export_icfg_template(tid):
 def api_import_icfg_template():
     """导入巡检模板"""
     try:
-        icfg_init_db()
         d = request.json
         result = import_template(
             d.get('template_config', {}),
@@ -1940,7 +2005,6 @@ def api_import_icfg_template():
 def api_list_icfg_chapters(tid):
     """获取模板下的章节列表"""
     try:
-        icfg_init_db()
         rows = get_chapters_by_template(tid)
         for ch in rows:
             queries = get_queries_by_chapter(ch['id'])
@@ -1954,7 +2018,6 @@ def api_list_icfg_chapters(tid):
 def api_create_icfg_chapter(tid):
     """在模板下创建章节"""
     try:
-        icfg_init_db()
         d = request.json
         cid = create_chapter(
             template_id=tid,
@@ -1973,7 +2036,6 @@ def api_create_icfg_chapter(tid):
 def api_get_icfg_chapter(cid):
     """获取章节详情"""
     try:
-        icfg_init_db()
         row = get_chapter(cid)
         if row:
             return jsonify({'success': True, 'data': row})
@@ -1986,7 +2048,6 @@ def api_get_icfg_chapter(cid):
 def api_update_icfg_chapter(cid):
     """更新章节"""
     try:
-        icfg_init_db()
         d = request.json
         update_chapter(
             cid,
@@ -2005,7 +2066,6 @@ def api_update_icfg_chapter(cid):
 def api_delete_icfg_chapter(cid):
     """删除章节（级联删除查询）"""
     try:
-        icfg_init_db()
         delete_chapter(cid)
         return jsonify({'success': True, 'message': '章节删除成功'})
     except Exception as e:
@@ -2016,7 +2076,6 @@ def api_delete_icfg_chapter(cid):
 def api_reorder_icfg_chapters():
     """章节拖拽排序"""
     try:
-        icfg_init_db()
         d = request.json
         template_id = d.get('template_id')
         chapter_ids = d.get('chapter_ids', [])
@@ -2032,7 +2091,6 @@ def api_reorder_icfg_chapters():
 def api_list_icfg_queries(cid):
     """获取章节下的查询列表"""
     try:
-        icfg_init_db()
         rows = get_queries_by_chapter(cid)
         return jsonify({'success': True, 'data': rows})
     except Exception as e:
@@ -2043,7 +2101,6 @@ def api_list_icfg_queries(cid):
 def api_create_icfg_query(cid):
     """在章节下创建查询"""
     try:
-        icfg_init_db()
         d = request.json
         qid = create_query(
             chapter_id=cid,
@@ -2062,7 +2119,6 @@ def api_create_icfg_query(cid):
 def api_get_icfg_query(qid):
     """获取查询详情"""
     try:
-        icfg_init_db()
         row = get_query(qid)
         if row:
             return jsonify({'success': True, 'data': row})
@@ -2075,7 +2131,6 @@ def api_get_icfg_query(qid):
 def api_update_icfg_query(qid):
     """更新查询"""
     try:
-        icfg_init_db()
         d = request.json
         update_query(
             qid,
@@ -2094,7 +2149,6 @@ def api_update_icfg_query(qid):
 def api_delete_icfg_query(qid):
     """删除查询"""
     try:
-        icfg_init_db()
         delete_query(qid)
         return jsonify({'success': True, 'message': '查询删除成功'})
     except Exception as e:
@@ -3530,7 +3584,7 @@ def api_pro_datasources_test_conn():
 
                         if _subdir:
                             _base_dir = os.path.dirname(os.path.abspath(__file__))
-                            _bundled = os.path.join(_base_dir, 'oracle_client', _subdir)
+                            _bundled = os.path.join(_base_dir, 'drivers', 'oracle_client', _subdir)
                             if os.path.isdir(_bundled) and os.path.isfile(os.path.join(_bundled, _marker)):
                                 try:
                                     oracledb.init_oracle_client(lib_dir=_bundled)
@@ -3581,6 +3635,13 @@ def api_pro_datasources_test_conn():
             conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={host},{port};UID={user};PWD={password};TrustServerCertificate=yes;Connection Timeout=10"
             conn = pyodbc.connect(conn_str)
             conn.close()
+        elif db_type == 'yashandb':
+            try:
+                import yasdb
+                conn = yasdb.connect(host=host, port=int(port), user=user, password=password)
+                conn.close()
+            except ImportError as e:
+                return jsonify({'ok': False, 'error': f'yasdb 驱动未安装: {str(e)}'})
         else:
             return jsonify({'ok': False, 'error': f'不支持的数据库类型: {db_type}'})
 
@@ -3668,7 +3729,7 @@ def _connect_oracle_thick_fallback(user, password, dsn, sysdba=False):
                 _subdir, _marker = None, None
             if _subdir:
                 _base_dir = os.path.dirname(os.path.abspath(__file__))
-                _bundled = os.path.join(_base_dir, 'oracle_client', _subdir)
+                _bundled = os.path.join(_base_dir, 'drivers', 'oracle_client', _subdir)
                 if os.path.isdir(_bundled) and os.path.isfile(os.path.join(_bundled, _marker)):
                     try:
                         oracledb.init_oracle_client(lib_dir=_bundled)
@@ -3772,6 +3833,13 @@ def api_ds_databases(ds_id):
             cur.execute("SELECT username FROM all_users ORDER BY username")
             system_dbs = ('SYSDBA', 'SYSAUDITOR', 'SYS', 'SYSSESSION', 'INFORMATION_SCHEMA')
             databases = [r[0] for r in cur.fetchall() if r[0].upper() not in system_dbs]
+            conn.close()
+        elif db_type == 'yashandb':
+            import yasdb
+            conn = yasdb.connect(host=host, port=int(port), user=user, password=pwd)
+            cur = conn.cursor()
+            cur.execute("SELECT username FROM SYS.ALL_USERS ORDER BY username")
+            databases = [r[0] for r in cur.fetchall()]
             conn.close()
         else:
             return jsonify({'error': f'暂不支持该数据库类型: {db_type}'}), 400
@@ -3917,6 +3985,28 @@ def api_ds_objects(ds_id):
             try:
                 cur.execute(
                     'SELECT view_name FROM ALL_VIEWS WHERE owner = ? ORDER BY view_name',
+                    (owner,)
+                )
+                views = [r[0] for r in cur.fetchall()]
+            except Exception:
+                pass
+            conn.close()
+        elif db_type == 'yashandb':
+            import yasdb
+            conn = yasdb.connect(host=host, port=int(port), user=user, password=pwd)
+            cur = conn.cursor()
+            owner = (database or '').upper()
+            try:
+                cur.execute(
+                    'SELECT table_name FROM SYS.ALL_TABLES WHERE owner = ? ORDER BY table_name',
+                    (owner,)
+                )
+                tables = [r[0] for r in cur.fetchall()]
+            except Exception:
+                pass
+            try:
+                cur.execute(
+                    'SELECT view_name FROM SYS.ALL_VIEWS WHERE owner = ? ORDER BY view_name',
                     (owner,)
                 )
                 views = [r[0] for r in cur.fetchall()]
@@ -4092,6 +4182,15 @@ def api_execute_sql():
         elif db_type == 'dm':
             import dmPython
             conn = dmPython.connect(user=user, password=pwd, server=host, port=port)
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            rows = cursor.fetchmany(200)
+            has_more = len(rows) >= 200
+
+        elif db_type == 'yashandb':
+            import yasdb
+            conn = yasdb.connect(host=host, port=int(port), user=user, password=pwd)
             cursor = conn.cursor()
             cursor.execute(sql)
             columns = [desc[0] for desc in cursor.description] if cursor.description else []
@@ -4802,6 +4901,25 @@ def api_inspection_execute_sql():
                 password=db_info.get('password', ''),
                 server=db_info.get('host', ''),
                 port=int(db_info.get('port', 5236))
+            )
+            cursor = conn.cursor()
+            statements = _split_sql(sql)
+            total_affected = 0
+            for stmt in statements:
+                cursor.execute(stmt)
+                total_affected += cursor.rowcount
+            conn.commit()
+            affected = total_affected
+            cursor.close()
+            conn.close()
+
+        elif db_type == 'yashandb':
+            import yasdb
+            conn = yasdb.connect(
+                host=db_info.get('host', ''),
+                port=int(db_info.get('port', 1688)),
+                user=db_info.get('user', ''),
+                password=db_info.get('password', '')
             )
             cursor = conn.cursor()
             statements = _split_sql(sql)
@@ -5971,7 +6089,311 @@ def on_disconnect():
         del _remote_sessions[sid]
 
 
+def _setup_driver_paths():
+    """自动配置数据库客户端驱动 PATH，让 yasdb/oracle 能找到底层 C 库。
+    
+    驱动目录结构（按平台子目录组织）：
+      drivers/yashandb/lib/
+        windows-x64/   yascli.dll + 依赖
+        windows-x86/   yascli.dll + 依赖（32位 Python）
+        linux-x64/     libyascli.so
+        linux-arm/     libyascli.so
+      drivers/oracle_client/
+        windows-x64/
+        linux-x64/
+        ...
+    """
+    base_dir = Path(__file__).resolve().parent
+    drivers_dir = base_dir / 'drivers'
+
+    system = platform.system().lower()
+    is_windows = system == 'windows'
+    machine = platform.machine().lower()
+
+    # 精确判断平台+位数（yashandb 和 oracle 均需区分）
+    if is_windows:
+        # struct.calcsize('P') 返回指针字节数，8=64位，4=32位
+        import struct
+        bits = struct.calcsize('P') * 8
+        yasdb_plat = 'windows-x64' if bits == 64 else 'windows-x86'
+        oracle_plat = 'windows_x64' if bits == 64 else 'windows_x86'
+    elif system == 'linux':
+        if machine in ('aarch64', 'arm64', 'armv8l'):
+            yasdb_plat = 'linux-arm'
+            oracle_plat = 'linux_arm'
+        else:
+            yasdb_plat = 'linux-x64'
+            oracle_plat = 'linux_x64'
+    elif system == 'darwin':
+        if machine in ('arm64', 'aarch64'):
+            yasdb_plat = 'darwin-arm64'
+            oracle_plat = 'darwin_arm64'
+        else:
+            yasdb_plat = 'darwin-x64'
+            oracle_plat = 'darwin_x64'
+    else:
+        return
+
+    def _add_path(dirpath):
+        """将目录加入 DLL/SO 搜索路径"""
+        if not dirpath.exists():
+            return
+        if is_windows:
+            try:
+                os.add_dll_directory(str(dirpath))
+            except Exception:
+                pass
+            os.environ['PATH'] = str(dirpath) + os.pathsep + os.environ.get('PATH', '')
+        else:
+            os.environ['LD_LIBRARY_PATH'] = str(dirpath) + ':' + os.environ.get('LD_LIBRARY_PATH', '')
+
+    # Oracle Instant Client
+    _add_path(drivers_dir / 'oracle_client' / oracle_plat)
+
+    # YashanDB Client
+    # yacli.py (ctypesgen 生成) 在模块级别执行 load_library("yascli")，
+    # 它有自己的 DLL 搜索逻辑，不受 PATH 或 os.add_dll_directory 影响。
+    # 搜索顺序：other_dirs → yacli.py 同目录 → find_library → 平台路径 → CWD
+    # 由于模块级加载无法提前调用 add_library_search_dirs，
+    # 解决方案：将 DLL/SO 复制到 yacli.py 同目录下
+    #
+    # 目录结构：drivers/yashandb/lib/<platform>/lib/*.dll（解压后含 bin/include/lib 三级）
+    # 真正的库文件在平台子目录下的 lib/ 里，例如：
+    #   drivers/yashandb/lib/windows-x64/lib/yascli.dll
+    yashandb_lib = drivers_dir / 'yashandb' / 'lib' / yasdb_plat / 'lib'
+    if yashandb_lib.exists():
+        # 查找 yacli.py 的安装目录
+        yacli_dir = None
+        for p in sys.path:
+            candidate = os.path.join(p, 'yasdb', 'libs')
+            if os.path.exists(os.path.join(candidate, 'yacli.py')):
+                yacli_dir = candidate
+                break
+        if yacli_dir:
+            import shutil
+            # Windows: 复制 .dll；Linux: 复制 .so*
+            patterns = ['*.dll'] if is_windows else ['*.so', '*.so.*']
+            for pat in patterns:
+                for lib_file in yashandb_lib.glob(pat):
+                    dst = os.path.join(yacli_dir, lib_file.name)
+                    if not os.path.exists(dst):
+                        try:
+                            shutil.copy2(str(lib_file), dst)
+                            print(f'[DBCheck] YashanDB: copied {lib_file.name} -> {dst}')
+                        except Exception as e:
+                            print(f'[DBCheck] YashanDB: failed to copy {lib_file.name}: {e}')
+        # 同时加入 PATH（部分依赖 DLL 不在 yacli.py 目录，靠 PATH 兜底）
+        _add_path(yashandb_lib)
+
+
+# ── 数据管理 API ───────────────────────────────────────────
+
+@app.route('/api/home_stats', methods=['GET'])
+def api_home_stats():
+    """首页综合统计：巡检次数、备份信息、基线条数、数据源等"""
+    result = {
+        'inspection_by_db': {},      # 各库巡检总次数
+        'inspection_total': 0,
+        'server_inspection_total': 0,
+        'backup_count': 0,
+        'backup_latest': None,
+        'baseline_by_db': {},         # 各库基线条数
+        'baseline_total': 0,
+        'datasource_by_db': {},       # 各库数据源数
+        'datasource_total': 0,
+        'scheduled_jobs': 0,
+        'scheduled_active': 0,
+        'rag_docs': 0,
+        'rag_chunks': 0,
+        'template_count': 0,
+    }
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 1. 巡检次数（非Pro版 inspection.db 中的 history）
+        inspection_db = os.path.join(base_dir, 'inspection.db')
+        if os.path.exists(inspection_db):
+            conn = sqlite3.connect(inspection_db)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*) as cnt FROM inspection_history
+            """)
+            row = cur.fetchone()
+            result['inspection_total'] = row['cnt'] if row else 0
+
+            # 按 db_type 统计
+            cur.execute("""
+                SELECT db_type, COUNT(*) as cnt
+                FROM inspection_history
+                GROUP BY db_type
+            """)
+            for r in cur.fetchall():
+                result['inspection_by_db'][r['db_type']] = r['cnt']
+            conn.close()
+
+        # 2. 服务器巡检次数
+        server_db = os.path.join(base_dir, 'data', 'server_history.db')
+        if os.path.exists(server_db):
+            conn = sqlite3.connect(server_db)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) as cnt FROM server_inspection_history")
+            row = cur.fetchone()
+            result['server_inspection_total'] = row['cnt'] if row else 0
+            conn.close()
+
+        # 3. 备份信息
+        try:
+            from data_manager import list_backups
+            backups = list_backups()
+            result['backup_count'] = len(backups)
+            if backups:
+                result['backup_latest'] = backups[0].get('name')
+        except Exception:
+            pass
+
+        # 4. 基线配置
+        if os.path.exists(inspection_db):
+            conn = sqlite3.connect(inspection_db)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT db_type, COUNT(*) as cnt
+                FROM inspection_baseline
+                GROUP BY db_type
+            """)
+            for r in cur.fetchall():
+                result['baseline_by_db'][r['db_type']] = r['cnt']
+            cur.execute("SELECT COUNT(*) as cnt FROM inspection_baseline")
+            row = cur.fetchone()
+            result['baseline_total'] = row['cnt'] if row else 0
+            conn.close()
+
+        # 5. 数据源（Pro版）
+        try:
+            from pro import get_instance_manager
+            im = get_instance_manager()
+            stats = im.get_statistics()
+            result['datasource_total'] = stats.get('total_instances', 0)
+            result['datasource_by_db'] = {
+                'mysql': stats.get('mysql', 0),
+                'pg': stats.get('pg', 0),
+                'oracle': stats.get('oracle', 0),
+                'sqlserver': stats.get('sqlserver', 0),
+                'dm': stats.get('dm', 0),
+                'tidb': stats.get('tidb', 0),
+            }
+        except Exception:
+            pass
+
+        # 6. 定时任务
+        try:
+            from web_ui import _get_scheduler
+            sm = _get_scheduler()
+            jobs = sm.list_jobs()
+            result['scheduled_jobs'] = len(jobs)
+            result['scheduled_active'] = sum(1 for j in jobs if j.get('enabled'))
+        except Exception:
+            pass
+
+        # 7. RAG 知识库
+        try:
+            from web_ui import _get_rag_manager
+            mgr = _get_rag_manager()
+            if mgr:
+                docs = mgr.list_documents()
+                result['rag_docs'] = len(docs)
+                result['rag_chunks'] = sum(d.get('chunks', 0) for d in docs)
+        except Exception:
+            pass
+
+        # 8. 巡检模板
+        if os.path.exists(inspection_db):
+            conn = sqlite3.connect(inspection_db)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) as cnt FROM inspection_template")
+            row = cur.fetchone()
+            result['template_count'] = row['cnt'] if row else 0
+            conn.close()
+
+    except Exception as e:
+        pass
+
+    return jsonify({'success': True, 'stats': result})
+
+
+@app.route('/api/data_management/files', methods=['GET'])
+def api_data_management_files():
+    """获取数据文件信息"""
+    try:
+        from data_manager import get_data_files_info
+        files = get_data_files_info()
+        return jsonify({'success': True, 'files': files})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/data_management/backups', methods=['GET'])
+def api_data_management_backups():
+    """列出所有备份"""
+    try:
+        from data_manager import list_backups
+        backups = list_backups()
+        return jsonify({'success': True, 'backups': backups})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/data_management/backup', methods=['POST'])
+def api_data_management_backup():
+    """创建数据备份"""
+    try:
+        from data_manager import backup_data
+        data = request.get_json(silent=True) or {}
+        backup_name = data.get('backup_name', '')
+        result = backup_data(backup_name=backup_name or None)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/data_management/restore', methods=['POST'])
+def api_data_management_restore():
+    """从备份还原数据"""
+    try:
+        from data_manager import restore_data
+        data = request.get_json() or {}
+        backup_name = data.get('backup_name', '')
+        selected_items = data.get('selected_items')
+        if not backup_name:
+            return jsonify({'success': False, 'message': '请指定备份名称'})
+        result = restore_data(backup_name, selected_items)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/data_management/backup/<path:name>', methods=['DELETE'])
+def api_data_management_delete_backup(name):
+    """删除指定备份"""
+    try:
+        from data_manager import delete_backup
+        result = delete_backup(name)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/api/data_management/upgrade_check', methods=['GET'])
+def api_data_management_upgrade_check():
+    """检测升级状态"""
+    try:
+        from data_manager import check_upgrade_ready
+        result = check_upgrade_ready()
+        return jsonify({'success': True, **result})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
 if __name__ == '__main__':
+    _setup_driver_paths()
     port = 5003
     print(_t('webui.startup_msg').format(port=port))
     socketio.run(app, host='0.0.0.0', port=port, debug=False)

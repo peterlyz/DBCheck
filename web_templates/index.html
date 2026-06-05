@@ -1069,6 +1069,7 @@ select option { background: var(--surface2); }
 .tag-sqlserver { background: rgba(244,67,54,.12); color: #ff5722; }
 .tag-tidb    { background: rgba(76,175,80,.12); color: #4caf50; }
 .tag-ivorysql { background: rgba(51,103,145,.12); color: #336791; }
+.tag-yashandb { background: rgba(156,39,176,.12); color: #9c27b0; }
 
 /* ─── Responsive ─── */
 /* ─── 响应式断点 ─── */
@@ -3096,7 +3097,7 @@ function formatBytes(bytes) {
         window._confirmCallback = onConfirm;
         const html = '<div id="confirm-modal-backdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center">' +
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:320px;max-width:400px;z-index:999999">' +
-            '<div style="font-size:15px;font-weight:600;margin-bottom:12px">' + title + '</div>' +
+            '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:12px">' + title + '</div>' +
             '<div style="font-size:13px;color:var(--text-muted);margin-bottom:20px">' + message + '</div>' +
             '<div style="display:flex;justify-content:flex-end;gap:10px">' +
               '<button class="btn btn-ghost" onclick="document.getElementById(\'confirm-modal-backdrop\').remove()">' + i18n('webui.cancel') + '</button>' +
@@ -3140,7 +3141,7 @@ function formatBytes(bytes) {
         document.getElementById('group-modal-backdrop')?.remove();
         const html = '<div id="group-modal-backdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center">' +
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:320px;max-width:400px;z-index:999999">' +
-            '<div style="font-size:15px;font-weight:600;margin-bottom:16px">' + i18n('webui.group_create_title') + '</div>' +
+            '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:16px">' + i18n('webui.group_create_title') + '</div>' +
             '<div style="display:grid;gap:12px">' +
               '<div><label style="font-size:12px;color:var(--text-muted)">' + i18n('webui.group_name_label') + '</label>' +
                 '<input id="group-name-input" style="width:100%;margin-top:4px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px" placeholder="default"></div>' +
@@ -3192,7 +3193,7 @@ function formatBytes(bytes) {
         const saveBtnText = isEdit ? i18n('webui.pro_datasource_save_update') : i18n('webui.pro_datasource_save_create');
         const html = '<div id="datasource-modal-backdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center">' +
           '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:420px;max-width:520px;z-index:999999">' +
-            '<div style="font-size:15px;font-weight:600;margin-bottom:16px">' + modalTitle + '</div>' +
+            '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:16px">' + modalTitle + '</div>' +
             '<div style="display:grid;gap:12px">' +
               '<div><label style="font-size:12px;color:var(--text-muted)">' + i18n('webui.pro_ds_db_type_req') + '</label>' +
                 '<select id="ds-db-type" style="width:100%;margin-top:4px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px" onchange="onDsDbTypeChange()">' +
@@ -3203,6 +3204,7 @@ function formatBytes(bytes) {
                   '<option value="sqlserver">SQL Server</option>' +
                   '<option value="tidb">TiDB</option>' +
                   '<option value="ivorysql">IvorySQL</option>' +
+                  '<option value="yashandb">YashanDB</option>' +
                 '</select></div>' +
               '<div><label style="font-size:12px;color:var(--text-muted)">' + i18n('webui.pro_ds_label_req') + '</label>' +
                 '<input id="ds-label" style="width:100%;margin-top:4px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px" placeholder="' + i18n('webui.pro_ds_placeholder_name') + '"></div>' +
@@ -3277,8 +3279,8 @@ function formatBytes(bytes) {
       let _editSshPassword = '';
       function onDsDbTypeChange() {
         const dbType = document.getElementById('ds-db-type').value;
-        const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5432};
-        const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres'};
+        const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5432, yashandb:1688};
+        const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres', yashandb:'sys'};
         document.getElementById('ds-port').value = portMap[dbType] || 3306;
         const userEl = document.getElementById('ds-user');
         // 类型改变时强制更新用户名
@@ -3642,6 +3644,9 @@ function formatBytes(bytes) {
     <div class="nav-item" onclick="showPage('license')" id="nav-license" style="display:none;">
       <span class="icon">🔑</span> <span data-i18n="webui.nav_license">许可证</span>
     </div>
+    <div class="nav-item" onclick="showPage('data-management')" id="nav-data-management">
+      <span class="icon">📦</span> <span data-i18n="webui.nav_data_management">数据管理</span>
+    </div>
     <div class="nav-item" onclick="showAboutModal()" id="nav-about">
       <span class="icon">💡</span> <span data-i18n="webui.nav_about">关于 DBCheck</span>
     </div>
@@ -3772,7 +3777,7 @@ function formatBytes(bytes) {
         </div>
 
         <!-- 核心功能区 -->
-        <div class="home-section">
+        <div class="home-section" style="margin-top:24px;">
           <div class="section-header">
             <h2 class="section-title" data-i18n="webui.home_section_title">核心功能</h2>
             <span class="section-desc" data-i18n="webui.home_section_desc">一站式数据库健康巡检解决方案</span>
@@ -3899,6 +3904,14 @@ function formatBytes(bytes) {
               </div>
               <div class="tc-name" data-i18n="webui.db_ivorysql_name">IvorySQL</div>
               <div class="tc-desc" data-i18n="webui.db_ivorysql_desc">适用于瀚高 IvorySQL（PostgreSQL + Oracle 兼容），复用 PG 巡检模板并增加 Oracle 兼容模式检查。</div>
+            </div>
+            <div class="type-card" id="tc-yashandb" onclick="selectDbType('yashandb')">
+              <div class="tc-header">
+                <div class="tc-logo"><img src="/yashandb.png" alt="YashanDB" style="height:36px;width:auto;"></div>
+                <div class="tc-check" id="chk-yashandb"></div>
+              </div>
+              <div class="tc-name-row"><span data-i18n="webui.db_yashandb_name">YashanDB</span><span class="beta-tag">Beta</span></div>
+              <div class="tc-desc" data-i18n="webui.db_yashandb_desc">适用于崖山 YashanDB V23+ 实例，采集会话、锁、表空间、SQL 性能等核心指标。</div>
             </div>
           </div>
           <div class="btn-row">
@@ -4128,6 +4141,7 @@ function formatBytes(bytes) {
             <button class="filter-btn" data-type="SQLServer" onclick="filterReports('SQLServer')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🟠 SQL Server</button>
             <button class="filter-btn" data-type="TiDB" onclick="filterReports('TiDB')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🟢 TiDB</button>
             <button class="filter-btn" data-type="IvorySQL" onclick="filterReports('IvorySQL')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🐘 IvorySQL</button>
+            <button class="filter-btn" data-type="YashanDB" onclick="filterReports('YashanDB')" style="padding:5px 14px;font-size:12px;border-radius:20px;cursor:pointer">🏔️ YashanDB</button>
           </div>
           <!-- 批量操作栏（默认隐藏） -->
           <div id="batch-bar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px">
@@ -4690,22 +4704,23 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
       <!-- ══ Page: Oracle Client Settings ══ -->
       <div class="page" id="page-oracle-client">
         <div class="card">
-          <div class="card-title"><span>🗄️</span> <span data-i18n="webui.oracle_client_title">Oracle Client 设置</span></div>
+          <div class="card-title"><span>🔧</span> <span data-i18n="webui.oracle_client_title">数据库客户端设置</span></div>
           <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line" data-i18n="webui.oracle_client_desc">
             Oracle 11g 及以下版本需要 Oracle Instant Client 才能连接。<br/>
-            请指定 Instant Client 的安装路径（包含 <code>oci.dll</code> / <code>libclntsh.so</code> 的目录）。<br/>
+            YashanDB 需要 YashanDB Client 驱动才能连接。<br/>
             <strong style="color:var(--warn)">注意：</strong>修改后需要重启 DBCheck 才能生效。
           </div>
 
           <!-- 自动检测状态 -->
           <div id="oracle-client-detect-status" style="display:none;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;line-height:1.6"></div>
 
-          <!-- 一键下载区域 -->
-          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px 20px;margin-bottom:16px;">
-            <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">⬇️ 自动下载 Oracle Instant Client</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.5;">
-              一键下载并解压 Oracle Instant Client Basic 到 DBCheck 项目目录，无需手动前往 Oracle 官网。<br/>
-              当前下载版本：23.26，支持 Windows / Linux / macOS。
+          <!-- 自动配置 -->
+          <div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px">⬇️ <span data-i18n="webui.oracle_client_auto_config">自动配置</span></div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;line-height:1.6;" data-i18n="webui.oracle_client_auto_config_desc1">一键下载并解压 Oracle Instant Client Basic 和 YashanDB Client 到 DBCheck 项目目录，无需手动前往官网。</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;" data-i18n="webui.oracle_client_auto_config_desc2">当前下载版本：Oracle Instant Client 23.26，支持 Windows / Linux / macOS。</div>
+            <div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--text-muted);line-height:1.7;">
+              <strong style="color:var(--warn)">⚠️ Linux 用户注意：</strong>YashanDB Linux 驱动下载后为 <code>.tar.gz</code> 压缩包，需要手动解压到 <code>drivers/yashandb/lib</code> 目录（Windows 路径为 <code>drivers\yashandb\lib</code>）。可使用下方「检查安装状态」按钮确认。
             </div>
             <div id="oracle-download-progress" style="display:none;margin-bottom:12px;">
               <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;height:8px;overflow:hidden;margin-bottom:6px;">
@@ -4713,29 +4728,35 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               </div>
               <div id="oracle-download-msg" style="font-size:12px;color:var(--text-muted);"></div>
             </div>
-            <button class="btn btn-primary" id="oracle-download-btn" onclick="downloadOracleClient()" style="width:auto;padding:8px 20px;">
-              ⬇️ 一键下载并安装
-            </button>
-            <button class="btn btn-ghost" onclick="checkOracleClientStatus()" style="width:auto;padding:8px 16px;margin-left:8px;">
-              🔍 检查安装状态
-            </button>
-          </div>
-
-          <div class="form-group">
-            <label data-i18n="webui.oracle_client_path">Oracle Instant Client 路径</label>
-            <input type="text" id="oracle-client-path" class="form-input" placeholder="例如：C:\oracle\instantclient_21_12 或 /usr/lib/oracle/21/client64/lib"/>
-            <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;white-space:pre-line" data-i18n="webui.oracle_client_path_hint">
-               Windows 示例：C:\oracle\instantclient_21_12<br/>
-               Linux 示例：/usr/lib/oracle/21/client64/lib<br/>
-               留空则自动检测系统环境变量
+            <div style="display:flex;gap:10px;">
+              <button class="btn btn-primary" id="oracle-download-btn" onclick="downloadOracleClient()" style="padding:8px 20px;" data-i18n="webui.oracle_client_download_btn">
+                ⬇️ 一键下载并安装
+              </button>
+              <button class="btn btn-ghost" onclick="checkOracleClientStatus()" style="padding:8px 16px;" data-i18n="webui.oracle_client_check_btn">
+                🔍 检查安装状态
+              </button>
             </div>
           </div>
 
-          <div id="oracle-client-status" style="display:none;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
+          <!-- 手动配置 -->
+          <div style="background:var(--surface2);border-radius:10px;padding:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px">✏️ <span data-i18n="webui.oracle_client_manual_config">手动配置</span></div>
+            <div class="form-group">
+              <label data-i18n="webui.oracle_client_path">Oracle Instant Client 路径</label>
+              <input type="text" id="oracle-client-path" class="form-input" placeholder="例如：C:\oracle\instantclient_21_12 或 /usr/lib/oracle/21/client64/lib"/>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;white-space:pre-line" data-i18n="webui.oracle_client_path_hint">
+                 Windows 示例：C:\oracle\instantclient_21_12<br/>
+                 Linux 示例：/usr/lib/oracle/21/client64/lib<br/>
+                 留空则自动检测系统环境变量
+              </div>
+            </div>
 
-          <div class="btn-row">
-            <button class="btn btn-ghost" onclick="loadOracleClientConfig()" data-i18n="webui.oracle_client_reload">↻ 重新加载</button>
-            <button class="btn btn-primary" onclick="saveOracleClientConfig()" data-i18n="webui.oracle_client_save_btn">💾 保存配置</button>
+            <div id="oracle-client-status" style="display:none;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
+
+            <div class="btn-row">
+              <button class="btn btn-ghost" onclick="loadOracleClientConfig()" data-i18n="webui.oracle_client_reload">↻ 重新加载</button>
+              <button class="btn btn-primary" onclick="saveOracleClientConfig()" data-i18n="webui.oracle_client_save_btn">💾 保存配置</button>
+            </div>
           </div>
         </div>
       </div>
@@ -5047,6 +5068,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <option value="sqlserver">SQL Server</option>
               <option value="tidb">TiDB</option>
               <option value="ivorysql">IvorySQL</option>
+              <option value="yashandb">YashanDB</option>
             </select>
           </div>
           <div id="rules-list" style="margin-top:12px;">
@@ -5190,6 +5212,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
           <div id="inspection-template-list-page">
             <div class="page-toolbar">
               <button class="btn btn-primary btn-sm" onclick="editInspectionTemplate(null)" data-i18n="webui.inspection_create_template">创建模板</button>
+              <button class="btn btn-sm" onclick="importInspectionTemplate()" data-i18n="webui.inspection_import">导入</button>
             </div>
             <div id="inspection-template-list" class="inspection-template-list">
               <!-- 动态加载模板列表 -->
@@ -5203,7 +5226,6 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <button class="btn btn-primary btn-sm" onclick="saveInspectionTemplate()" data-i18n="webui.inspection_save_template">保存模板</button>
               <button class="btn btn-sm btn-primary" onclick="addInspectionChapter()" data-i18n="webui.inspection_add_chapter">添加章节</button>
               <button class="btn btn-sm" onclick="exportInspectionTemplate()" data-i18n="webui.inspection_export" style="display:none;">导出</button>
-              <button class="btn btn-sm" onclick="importInspectionTemplate()" data-i18n="webui.inspection_import" style="display:none;">导入</button>
             </div>
             <!-- 模板信息编辑区 -->
             <div class="inspection-template-info">
@@ -5223,7 +5245,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
                     <option value="postgresql">PostgreSQL</option>
                     <option value="oracle">Oracle</option>
                     <option value="sqlserver">SQL Server</option>
-                    <option value="dm8">DM8 达梦</option>
+                    <option value="dm8">DM</option>
                     <option value="tidb">TiDB</option>
                     <option value="ivorysql">IvorySQL</option>
                   </select>
@@ -5275,20 +5297,24 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
             <select id="baseline-filter-db-type" class="form-input" style="width:auto;min-width:140px" onchange="filterBaselines()">
               <option value="">所有数据库类型</option>
               <option value="oracle">Oracle</option>
-              <option value="dm8">DM8 达梦</option>
+              <option value="dm8">DM</option>
               <option value="mysql">MySQL</option>
               <option value="postgresql">PostgreSQL</option>
               <option value="ivorysql">IvorySQL</option>
+              <option value="yashandb">YashanDB</option>
               <option value="sqlserver">SQL Server</option>
               <option value="tidb">TiDB</option>
             </select>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-outline-primary btn-sm" onclick="initDefaultBaselines()">
+            <button class="btn btn-outline-primary btn-sm" onclick="initDefaultBaselines()" style="display:none">
               <i class="fas fa-magic"></i> <span data-i18n="baseline.init_default">初始化默认基线</span>
             </button>
             <button class="btn btn-primary btn-sm" onclick="showBaselineModal(null)">
               <i class="fas fa-plus"></i> <span data-i18n="baseline.add">添加基线配置</span>
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="forceResetBaselines()">
+              <i class="fas fa-exclamation-triangle"></i> <span data-i18n="baseline.force_reset">强制重置基线</span>
             </button>
           </div>
         </div>
@@ -5533,6 +5559,72 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               </table>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- ══ Page: Data Management ══ -->
+      <div class="page" id="page-data-management" style="display:none;">
+        <div class="page-content" id="data-management-content">
+
+          <!-- 1. 数据文件概览 -->
+          <div class="card" style="margin-bottom:16px;">
+            <h3 style="font-size:15px;font-weight:600;margin-bottom:4px;" data-i18n="webui.dm_overview_title">数据文件概览</h3>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;" data-i18n="webui.dm_overview_desc">以下文件是 DBCheck 的核心数据，升级或迁移时必须备份</p>
+            <div class="table-wrap">
+              <table class="data-table" style="font-size:13px;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;" data-i18n="webui.dm_table_file">文件/目录</th>
+                    <th style="text-align:left;" data-i18n="webui.dm_table_name">说明</th>
+                    <th style="text-align:left;" data-i18n="webui.dm_table_category">类型</th>
+                    <th style="text-align:right;" data-i18n="webui.dm_table_size">大小</th>
+                    <th style="text-align:left;" data-i18n="webui.dm_table_modified">最后修改</th>
+                    <th style="text-align:center;" data-i18n="webui.dm_table_status">状态</th>
+                  </tr>
+                </thead>
+                <tbody id="dm-file-table-body">
+                  <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">加载中...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 2. 备份管理 -->
+          <div class="card" style="margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="font-size:15px;font-weight:600;margin:0;" data-i18n="webui.dm_backup_title">备份管理</h3>
+              <button class="btn btn-primary" onclick="dmCreateBackup()" data-i18n="webui.dm_backup_now">立即备份</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table" style="font-size:13px;">
+                <thead>
+                  <tr>
+                    <th style="text-align:left;" data-i18n="webui.dm_backup_name">备份名称</th>
+                    <th style="text-align:left;" data-i18n="webui.dm_backup_time">创建时间</th>
+                    <th style="text-align:right;" data-i18n="webui.dm_backup_size">大小</th>
+                    <th style="text-align:center;" data-i18n="webui.dm_backup_items">项目数</th>
+                    <th style="text-align:center;" data-i18n="webui.dm_backup_actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody id="dm-backup-table-body">
+                  <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;" data-i18n="webui.dm_backup_empty">暂无备份记录</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 3. 升级提示 -->
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+              <h3 style="font-size:15px;font-weight:600;margin:0;" data-i18n="webui.dm_upgrade_title">升级提示</h3>
+              <button class="btn btn-ghost" onclick="dmCheckUpgrade()" data-i18n="webui.dm_upgrade_check">检测升级状态</button>
+            </div>
+            <div id="dm-upgrade-result">
+              <p style="font-size:13px;color:var(--text-muted);" data-i18n="webui.dm_upgrade_hint">升级 DBCheck 时，请确保备份以下核心文件：</p>
+              <p style="font-size:12px;color:var(--text-muted);" data-i18n="webui.dm_upgrade_files">data/ 目录、pro_data/ 目录、inspection.db、.db_key</p>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -5797,6 +5889,7 @@ function showPage(name) {
     shares: ['🔗 分享管理', '管理已生成的巡检报告分享链接'],
     'monitor-slow': [i18n('monitor.slow_title') || '实时慢查询', i18n('monitor.slow_desc') || '定时拉取各数据源 Top SQL'],
     'monitor-conn': [i18n('monitor.conn_title') || '活跃连接监控', i18n('monitor.conn_desc') || '实时查看各数据源连接数'],
+    'data-management': [i18n('webui.data_management_title') || '数据管理', i18n('webui.data_management_desc') || '管理 DBCheck 自身数据文件'],
   };
   const t = titles[name] || [name, ''];
   document.getElementById('topbar-title').textContent = t[0];
@@ -5813,6 +5906,7 @@ function showPage(name) {
   if (name === 'rag') showRagPage();
   if (name === 'home') loadHomeStats();
   if (name === 'shares') loadShares();
+  if (name === 'data-management') loadDataManagement();
   if (name === 'backup') loadBackupPage();
   if (name === 'apikey') loadApiKeys();
   if (name === 'server-history') loadServerHistory();
@@ -5846,6 +5940,155 @@ function showPage(name) {
   if (mainEl) {
     if (name === 'sql-editor') { mainEl.classList.add('sql-editor-active'); }
     else { mainEl.classList.remove('sql-editor-active'); }
+  }
+}
+
+// ─── 数据管理 ─────────────────────────────────────
+async function loadDataManagement() {
+  await Promise.all([dmLoadFiles(), dmLoadBackups()]);
+}
+
+async function dmLoadFiles() {
+  const tbody = document.getElementById('dm-file-table-body');
+  tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">加载中...</td></tr>';
+  try {
+    const res = await fetch('/api/data_management/files');
+    const data = await res.json();
+    if (!data.success || !data.files || data.files.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">暂无数据</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.files.map(f => {
+      const statusBadge = f.exists
+        ? '<span class="badge" style="background:var(--success);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">正常</span>'
+        : '<span class="badge" style="background:var(--danger);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">缺失</span>';
+      return `<tr>
+        <td style="font-family:monospace;font-size:12px;">${escHtml(f.file)}</td>
+        <td>${escHtml(f.name)}</td>
+        <td>${escHtml(f.category)}</td>
+        <td style="text-align:right;">${escHtml(f.size_fmt || '—')}</td>
+        <td style="font-size:12px;">${escHtml(f.modified || '—')}</td>
+        <td style="text-align:center;">${statusBadge}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    console.error('Failed to load data files:', e);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:24px;">加载失败</td></tr>';
+  }
+}
+
+async function dmLoadBackups() {
+  const tbody = document.getElementById('dm-backup-table-body');
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">加载中...</td></tr>';
+  try {
+    const res = await fetch('/api/data_management/backups');
+    const data = await res.json();
+    if (!data.success || !data.backups || data.backups.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:24px;">暂无备份记录</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.backups.map(b => `<tr>
+      <td>${escHtml(b.name)}</td>
+      <td style="font-size:12px;">${escHtml(b.created || '—')}</td>
+      <td style="text-align:right;">${escHtml(b.size_fmt || '—')}</td>
+      <td style="text-align:center;">${b.item_count || '—'}</td>
+      <td style="text-align:center;">
+        <button class="btn btn-ghost" style="font-size:11px;padding:2px 8px;" onclick="dmRestoreBackup('${escHtml(b.name)}')">还原</button>
+        <button class="btn btn-danger" style="font-size:11px;padding:2px 8px;" onclick="dmDeleteBackup('${escHtml(b.name)}')">删除</button>
+      </td>
+    </tr>`).join('');
+  } catch(e) {
+    console.error('Failed to load backups:', e);
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger);padding:24px;">加载失败</td></tr>';
+  }
+}
+
+function dmCreateBackup() {
+  showConfirmModal('创建备份', '确定要创建数据备份吗？这将备份所有核心数据文件。', async () => {
+    try {
+      const res = await fetch('/api/data_management/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.success) {
+        toastSuccess('备份完成：' + (data.message || data.backup_name));
+        dmLoadBackups();
+      } else {
+        toastError('备份失败：' + (data.message || '未知错误'));
+      }
+    } catch(e) {
+      toastError('备份失败：' + e.message);
+    }
+  });
+}
+
+function dmRestoreBackup(name) {
+  showConfirmModal('还原备份', '确定要从备份 "' + name + '" 还原数据吗？数据库表将智能合并（不覆盖已有数据），非数据库文件将被覆盖。', async () => {
+    try {
+      const res = await fetch('/api/data_management/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backup_name: name }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toastSuccess('还原完成：' + (data.message || '还原成功'));
+        loadDataManagement();
+      } else {
+        toastError('还原失败：' + (data.message || '未知错误'));
+      }
+    } catch(e) {
+      toastError('还原失败：' + e.message);
+    }
+  });
+}
+
+function dmDeleteBackup(name) {
+  showConfirmModal('删除备份', '确定要删除备份 "' + name + '" 吗？此操作不可恢复。', async () => {
+    try {
+      const res = await fetch('/api/data_management/backup/' + encodeURIComponent(name), { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        toastSuccess('删除成功');
+        dmLoadBackups();
+      } else {
+        toastError('删除失败：' + (data.message || '未知错误'));
+      }
+    } catch(e) {
+      toastError('删除失败：' + e.message);
+    }
+  });
+}
+
+async function dmCheckUpgrade() {
+  const resultEl = document.getElementById('dm-upgrade-result');
+  resultEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:16px;">检测中...</div>';
+  try {
+    const res = await fetch('/api/data_management/upgrade_check');
+    const data = await res.json();
+    if (!data.success) {
+      resultEl.innerHTML = '<p style="color:var(--danger);">检测失败</p>';
+      return;
+    }
+    const d = data;
+    const statusColor = d.recommend_backup ? 'var(--warning)' : 'var(--success)';
+    const statusText = d.recommend_backup ? '升级前建议先备份数据' : '数据状态正常';
+    const missingList = (d.missing_required || []).map(m => '<li style="color:var(--danger);">' + escHtml(m) + '</li>').join('');
+    resultEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <span class="badge" style="background:${statusColor};color:#fff;padding:4px 12px;border-radius:10px;font-size:13px;">${statusText}</span>
+      </div>
+      <div style="display:flex;gap:24px;font-size:13px;margin-bottom:10px;">
+        <span>数据总量：<b>${d.total_data_size_fmt || '0 B'}</b></span>
+        <span>现有备份：<b>${d.backup_count || 0}</b> 个</span>
+        <span>最近备份：<b>${d.latest_backup || '无'}</b></span>
+      </div>
+      ${d.missing_required && d.missing_required.length > 0 ? '<p style="font-size:12px;color:var(--text-muted);">缺失文件：</p><ul style="font-size:12px;padding-left:20px;margin:4px 0 0;">' + missingList + '</ul>' : ''}
+      ${d.recommend_backup ? '<div style="margin-top:10px;"><button class="btn btn-primary" style="font-size:12px;" onclick="dmCreateBackup()">去备份</button></div>' : ''}
+    `;
+  } catch(e) {
+    resultEl.innerHTML = '<p style="color:var(--danger);">检测失败：' + e.message + '</p>';
   }
 }
 
@@ -6205,6 +6448,7 @@ async function selectDbType(type, skipReload) {
   // document.getElementById('tc-sqlserver').classList.toggle('selected', type === 'sqlserver');
   document.getElementById('tc-tidb').classList.toggle('selected', type === 'tidb');
   document.getElementById('tc-ivorysql').classList.toggle('selected', type === 'ivorysql');
+  document.getElementById('tc-yashandb').classList.toggle('selected', type === 'yashandb');
   document.getElementById('chk-mysql').textContent = type === 'mysql' ? '✓' : '';
   document.getElementById('chk-pg').textContent   = type === 'pg'    ? '✓' : '';
   document.getElementById('chk-dm').textContent = type === 'dm' ? '✓' : '';
@@ -6213,9 +6457,10 @@ async function selectDbType(type, skipReload) {
   // document.getElementById('chk-sqlserver').textContent = type === 'sqlserver' ? '✓' : '';
   document.getElementById('chk-tidb').textContent = type === 'tidb' ? '✓' : '';
   document.getElementById('chk-ivorysql').textContent = type === 'ivorysql' ? '✓' : '';
+  document.getElementById('chk-yashandb').textContent = type === 'yashandb' ? '✓' : '';
   // 默认端口 & 用户名
-  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432 };
-  const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres' };
+  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432, yashandb: 1688 };
+  const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres', yashandb: 'sys' };
   document.getElementById('f-port').value = portMap[type] || 3306;
   document.getElementById('f-user').value = userMap[type] || 'root';
   document.getElementById('f-database-wrap').style.display = (type === 'pg' || type === 'ivorysql') ? '' : 'none';
@@ -6674,14 +6919,14 @@ function fillConfirmPanel() {
   };
   const nameDefaults = { mysql: 'MySQL_Server', pg: 'PG_Server', oracle: 'Oracle_Server', dm: 'DM8_Server', sqlserver: 'SQLServer', tidb: 'TiDB_Cluster' };
   const portDefaults = { mysql: '3306', pg: '5432', oracle: '1521', dm: '5236', sqlserver: '1433', tidb: '4000' };
-  const userDefaults = { mysql: 'root', pg: 'postgres', oracle: 'system', dm: 'SYSDBA', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres' };
+  const userDefaults = { mysql: 'root', pg: 'postgres', oracle: 'system', dm: 'SYSDBA', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres', yashandb: 'sys' };
   const typeLabel = typeLabels[dbType] || dbType;
   const name = document.getElementById('f-name').value.trim() || (nameDefaults[dbType]||'_Server');
   const host = document.getElementById('f-host').value.trim() || 'localhost';
   const port = document.getElementById('f-port').value || (portDefaults[dbType]||'1521');
   const sshLabel = sshEnabled ? `${document.getElementById('f-ssh-host').value || host}:${document.getElementById('f-ssh-port').value||22}` : i18n('webui.ssh_not_configured');
 
-  const tagClass = dbType === 'mysql' ? 'tag-mysql' : dbType === 'oracle' ? 'tag-oracle' : dbType === 'dm' ? 'tag-dm' : dbType === 'sqlserver' ? 'tag-sqlserver' : dbType === 'tidb' ? 'tag-tidb' : 'tag-pg';
+  const tagClass = dbType === 'mysql' ? 'tag-mysql' : dbType === 'oracle' ? 'tag-oracle' : dbType === 'dm' ? 'tag-dm' : dbType === 'sqlserver' ? 'tag-sqlserver' : dbType === 'tidb' ? 'tag-tidb' : dbType === 'yashandb' ? 'tag-yashandb' : 'tag-pg';
   document.getElementById('cf-dbtype').innerHTML = `<span class="tag ${tagClass}">${typeLabel}</span>`;
   document.getElementById('cf-name').textContent = name;
   document.getElementById('cf-conn').textContent = `${host}:${port}`;
@@ -7245,7 +7490,7 @@ function showReportIssues(filename, autoAnalyzeB64) {
   <div id="report-issues-modal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:700px;max-width:900px;max-height:80vh;display:flex;flex-direction:column">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <div style="font-size:15px;font-weight:600">${i18n('webui.report_issues_subtitle').replace('{filename}', escHtml(filename)).replace('{count}', issues.length)}</div>
+        <div style="font-size:15px;font-weight:600;color:var(--text)">${i18n('webui.report_issues_subtitle').replace('{filename}', escHtml(filename)).replace('{count}', issues.length)}</div>
         <button onclick="document.getElementById('report-issues-modal').remove()" style="background:none;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;padding:4px">✕</button>
       </div>
       <div class="issues-list" style="overflow-y:auto;flex:1">
@@ -8307,7 +8552,7 @@ async function onJobDbTypeChange() {
 
   const defaultPorts = {
     mysql: 3306, pg: 5432, ivorysql: 5432, oracle: 1521,
-    dm: 5236, sqlserver: 1433, tidb: 4000
+    dm: 5236, sqlserver: 1433, tidb: 4000, yashandb: 1688
   };
   portInput.value = defaultPorts[dbType] || 3306;
   dbWrap.style.display = (dbType === 'pg' || dbType === 'ivorysql' || dbType === 'sqlserver') ? 'block' : 'none';
@@ -8499,9 +8744,10 @@ function showAddJobForm() {
       {value:'pg', label:'PostgreSQL'},
       {value:'ivorysql', label:'IvorySQL'},
       {value:'oracle', label:'Oracle'},
-      {value:'dm', label:'达梦 DM8'},
+      {value:'dm', label:'DM'},
       {value:'sqlserver', label:'SQL Server'},
       {value:'tidb', label:'TiDB'},
+      {value:'yashandb', label:'YashanDB'},
     ];
     dbTypes.forEach(t => {
       const opt = document.createElement('option');
@@ -10570,7 +10816,7 @@ function showPromptModal(title, msg) {
     const html =
       '<div id="' + id + '-backdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center">' +
         '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:360px;z-index:999999">' +
-          '<div style="font-size:15px;font-weight:600;margin-bottom:8px">' + title + '</div>' +
+          '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:8px">' + title + '</div>' +
           '<div style="font-size:13px;color:var(--text-muted);margin-bottom:12px">' + msg + '</div>' +
           '<input id="' + id + '-input" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;">' +
           '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">' +
@@ -10694,7 +10940,7 @@ async function loadAccountPage() {
         // 右侧：安全设置
         '<div style="width:300px;">' +
           '<div style="border:1px solid var(--border);border-radius:10px;padding:16px;">' +
-            '<div style="font-size:14px;font-weight:600;margin-bottom:12px;">🔒 修改密码</div>' +
+            '<div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px;">🔒 修改密码</div>' +
             '<input id="acct-oldpw" type="password" placeholder="旧密码" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;margin-bottom:8px;">' +
             '<input id="acct-newpw" type="password" placeholder="新密码（至少6位）" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;margin-bottom:8px;">' +
             '<button class="btn btn-primary" onclick="changePassword()" style="font-size:12px;width:100%;">更新密码</button>' +
@@ -11639,7 +11885,7 @@ function restoreBackup(instanceId, timestamp) {
     panel.id = 'restore-panel';
     panel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;z-index:99999;min-width:360px;box-shadow:0 12px 40px rgba(0,0,0,0.35)';
     panel.innerHTML =
-        '<div style="font-size:16px;font-weight:600;margin-bottom:8px;">🔄 恢复备份</div>' +
+        '<div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:8px;">🔄 恢复备份</div>' +
         '<div style="font-size:12px;color:var(--text-muted);margin-bottom:16px;">备份时间: ' + escHtml(timestamp) + '</div>' +
         '<div style="margin-bottom:14px;">' +
           '<label style="font-size:13px;font-weight:500;display:block;margin-bottom:4px;">目标数据库名 <span style="color:var(--danger)">*</span></label>' +
@@ -11943,7 +12189,7 @@ function showBackupConfirm(msg, onConfirm) {
     if (existing) existing.remove();
     const html = '<div id="backup-confirm-backdrop" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center">' +
       '<div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;min-width:320px;box-shadow:0 12px 40px rgba(0,0,0,0.35)">' +
-        '<div style="font-size:15px;font-weight:600;margin-bottom:12px;">⚠ 确认操作</div>' +
+        '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:12px;">⚠ 确认操作</div>' +
         '<div style="font-size:13px;color:var(--text);margin-bottom:20px;line-height:1.6">' + msg + '</div>' +
         '<div style="display:flex;justify-content:flex-end;gap:10px">' +
           '<button class="btn btn-ghost" onclick="document.getElementById(\'backup-confirm-backdrop\').remove()">取消</button>' +
@@ -14781,10 +15027,11 @@ function mkdirRemote() {
               <select class="form-input" id="baseline-db-type" required>
                 <option value="">请选择</option>
                 <option value="oracle">Oracle</option>
-                <option value="dm8">DM8 达梦</option>
+                <option value="dm8">DM</option>
                 <option value="mysql">MySQL</option>
                 <option value="postgresql">PostgreSQL</option>
                 <option value="ivorysql">IvorySQL</option>
+                <option value="yashandb">YashanDB</option>
                 <option value="sqlserver">SQL Server</option>
                 <option value="tidb">TiDB</option>
               </select>

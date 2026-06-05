@@ -38,6 +38,7 @@ a = Analysis(
         'oracledb',
         'pyodbc',
         'dmpython', 'dmpython.exceptions',
+        'yasdb',
         'paramiko', 'paramiko.transport', 'paramiko.auth_handler',
         'jinja2', 'jinja2.ext',
         'python_docx', 'docx',
@@ -71,7 +72,7 @@ a = Analysis(
         'socketio.async_server.gevent',
         # App modules
         'main', 'main_mysql', 'main_pg', 'main_oracle_full',
-        'main_dm', 'main_sqlserver', 'main_tidb', 'main_ivorysql',
+        'main_dm', 'main_sqlserver', 'main_tidb', 'main_ivorysql', 'main_yashandb',
         'analyzer', 'config_baseline', 'server_inspect',
         'run_inspection', 'inspection_init_db', 'inspection_engine',
         'inspection_dal', 'inspection_api', 'api_v1',

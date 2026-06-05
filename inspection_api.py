@@ -1063,23 +1063,56 @@ def api_delete_baseline(baseline_id):
 @inspection_bp.route('/baselines/init', methods=['POST'])
 def api_init_baselines():
     """
-    初始化默认基线配置（为所有支持的数据库类型）。
-    
+    首次初始化默认基线配置（仅在各 db_type 无数据时插入，幂等操作）。
+
     :return: JSON 响应，包含初始化结果
     """
     try:
         from inspection_dal import init_default_baselines
-        
+
         init_default_baselines()
-        
+
         return jsonify({
             'success': True,
             'message': '默认基线配置初始化成功'
         })
-        
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({
             'success': False,
             'message': f'初始化默认基线配置失败: {str(e)}'
+        }), 500
+
+
+@inspection_bp.route('/baselines/reset', methods=['POST'])
+def api_force_reset_baselines():
+    """
+    手动强制重置基线配置。清空指定（或全部）db_type 的基线后重新插入默认值。
+    注意：此操作不可逆，用户自定义的基线将被清除。
+
+    :return: JSON 响应，包含重置结果
+    """
+    try:
+        from inspection_dal import force_reset_baselines
+
+        data = request.get_json(silent=True) or {}
+        db_type = data.get('db_type')
+        force_reset_baselines(db_type=db_type)
+
+        if db_type:
+            msg = f'{db_type} 基线配置已重置'
+        else:
+            msg = '所有基线配置已重置'
+
+        return jsonify({
+            'success': True,
+            'message': msg
+        })
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({
+            'success': False,
+            'message': f'基线配置重置失败: {str(e)}'
         }), 500

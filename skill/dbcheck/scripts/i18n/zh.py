@@ -431,7 +431,7 @@ ZI = {
     "webui.nav_ai": "AI 诊断设置",
     "webui.nav_oracle_client": "Oracle Client 设置",
     "webui.oracle_client_title": "Oracle Client 设置",
-    "webui.oracle_client_desc": "Oracle 11g 及以下版本需要 Oracle Instant Client 才能连接。\n请指定 Instant Client 的安装路径（包含 oci.dll / libclntsh.so 的目录）。\n注意：修改后需要重启 DBCheck 才能生效。",
+    "webui.oracle_client_desc": "Oracle 11g 及以下版本需要 Oracle Instant Client 才能连接。\n注意：修改后需要重启 DBCheck 才能生效。",
     "webui.oracle_client_path": "Oracle Instant Client 路径",
     "webui.oracle_client_path_hint": "Windows 示例：C:\\oracle\\instantclient_21_12\nLinux 示例：/usr/lib/oracle/21/client64/lib\n留空则自动检测系统环境变量",
     "webui.oracle_client_reload": "↻ 重新加载",

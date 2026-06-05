@@ -455,7 +455,7 @@ class InstanceManager:
                                 _sub, _mk = None, None
                             if _sub:
                                 _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                                _bd = os.path.join(_base, 'oracle_client', _sub)
+                                _bd = os.path.join(_base, 'drivers', 'oracle_client', _sub)
                                 _dir_exists = os.path.isdir(_bd)
                                 _marker_exists = os.path.isfile(os.path.join(_bd, _mk)) if _dir_exists else False
                                 print(f'[Oracle Thick Mode] Bundled dir={_bd}, dir_exists={_dir_exists}, marker_exists={_marker_exists}', flush=True)
@@ -467,7 +467,7 @@ class InstanceManager:
                                     except Exception as be:
                                         print(f'[Oracle Thick Mode] Bundled init failed: {be}', flush=True)
                         if not _ok:
-                            return {'ok': False, 'message': 'Oracle 11g 需要 Instant Client，请将包解压到 oracle_client/windows_x64 目录'}
+                            return {'ok': False, 'message': 'Oracle 11g 需要 Instant Client，请将包解压到 drivers/oracle_client/windows_x64 目录'}
                         print('[Oracle Thick Mode] Reconnecting with thick mode...', flush=True)
                         conn = oracledb.connect(user=inst.user, password=password, dsn=dsn, mode=mode)
                     else:
@@ -504,6 +504,15 @@ class InstanceManager:
                 )
                 conn.close()
                 return {'ok': True, 'message': '连接成功 (TiDB %s:%d)' % (inst.host, inst.port)}
+
+            elif db_type == 'yashandb':
+                try:
+                    import yasdb
+                    conn = yasdb.connect(host=inst.host, port=inst.port, user=inst.user, password=password)
+                    conn.close()
+                    return {'ok': True, 'message': '连接成功 (YashanDB %s:%d)' % (inst.host, inst.port)}
+                except ImportError as e:
+                    return {'ok': False, 'message': f'yasdb 驱动未安装: {str(e)}'}
 
             else:
                 return {'ok': False, 'message': '不支持的数据库类型: %s' % db_type}

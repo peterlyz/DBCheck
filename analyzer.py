@@ -2156,6 +2156,14 @@ def smart_analyze_ivorysql(context: dict) -> list:
     return smart_analyze_pg(context)
 
 
+def smart_analyze_yashandb(context: dict) -> list:
+    """
+    对崖山 YashanDB 巡检结果执行基础风险规则分析。
+    YashanDB 与 Oracle 兼容，复用 DM8 规则作为基础。
+    """
+    return smart_analyze_dm(context)
+
+
 # ═══════════════════════════════════════════════════════
 #  5. 综合分析入口（供 main_mysql.py / main_pg.py 调用）
 # ═══════════════════════════════════════════════════════
@@ -2196,6 +2204,8 @@ def run_full_analysis(db_type: str, host: str, port, label: str,
         issues = smart_analyze_tidb(context)
     elif db_type == 'ivorysql':
         issues = smart_analyze_ivorysql(context)
+    elif db_type == 'yashandb':
+        issues = smart_analyze_yashandb(context)
     else:
         issues = []  # 未知类型，返回空列表
 

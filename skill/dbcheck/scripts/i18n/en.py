@@ -407,7 +407,7 @@ EN = {
     "webui.nav_ai": "AI Settings",
     "webui.nav_oracle_client": "Oracle Client Settings",
     "webui.oracle_client_title": "Oracle Client Settings",
-    "webui.oracle_client_desc": "Oracle 11g and below require Oracle Instant Client to connect.\nPlease specify the Instant Client installation path (directory containing oci.dll / libclntsh.so).\nNote: Restart DBCheck after modification to take effect.",
+    "webui.oracle_client_desc": "Oracle 11g and below require Oracle Instant Client to connect.\nNote: Restart DBCheck after modification to take effect.",
     "webui.oracle_client_path": "Oracle Instant Client Path",
     "webui.oracle_client_path_hint": "Windows example: C:\\oracle\\instantclient_21_12\nLinux example: /usr/lib/oracle/21/client64/lib\nLeave empty to auto-detect system environment variables",
     "webui.oracle_client_reload": "↻ Reload",

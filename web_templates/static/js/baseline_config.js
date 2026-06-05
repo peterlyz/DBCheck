@@ -243,6 +243,35 @@ function initDefaultBaselines() {
         });
 }
 
+// ========== 强制重置基线配置 ==========
+function forceResetBaselines() {
+    if (typeof showConfirmModal !== 'function') {
+        alert('系统异常：弹窗组件未加载');
+        return;
+    }
+    const title = i18n('baseline.force_reset') || '强制重置基线';
+    const message = i18n('baseline.force_reset_confirm')
+        || '确定要强制重置基线配置吗？\n此操作将清空所有自定义基线并恢复为默认值，不可撤销！';
+    showConfirmModal(title, message, () => {
+        fetch('/api/inspection/baselines/reset', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        })
+            .then(r => r.json())
+            .then(resp => {
+                if (resp.success) {
+                    showBaselineToast(resp.message || '基线配置已重置', 'success');
+                    loadBaselines();
+                } else {
+                    showBaselineToast('重置失败: ' + (resp.message || '未知错误'), 'error');
+                }
+            })
+            .catch(err => {
+                showBaselineToast('重置失败: ' + err.message, 'error');
+            });
+    });
+}
+
 // ========== Toast 提示 ==========
 function showBaselineToast(msg, type) {
     // 复用 index.html 已有的 toastSuccess / toastError（如果存在）

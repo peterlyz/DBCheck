@@ -1616,7 +1616,150 @@ def check_tidb_config_baseline(conn):
 
 
 # ═══════════════════════════════════════════════════════
-#  7. 统一入口函数
+#  8. YashanDB 配置基线
+# ═══════════════════════════════════════════════════════
+
+def _get_yashandb_db_size_gb(conn):
+    """获取 YashanDB 数据库总大小（GB）"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT NVL(SUM(BYTES), 0) / 1024 / 1024 / 1024 FROM DBA_DATA_FILES")
+        result = cursor.fetchone()[0] or 0
+        cursor.close()
+        return float(result)
+    except Exception:
+        return 0.0
+
+
+def _get_yashandb_cpu_cores():
+    """获取 CPU 核心数"""
+    try:
+        import os
+        return os.cpu_count() or 1
+    except Exception:
+        return 1
+
+
+YASHANDB_BASELINE_RULES = [
+    ('memory_target',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'memory_target'",
+     lambda conn, ctx: _get_oracle_total_memory_gb() * 0.85 * 1024 * 1024 * 1024,
+     '字节',
+     '内存目标大小（SGA+PGA），建议设为物理内存的 85%'),
+    ('sga_target',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'sga_target'",
+     lambda conn, ctx: _get_oracle_total_memory_gb() * 0.6 * 1024 * 1024 * 1024,
+     '字节',
+     'SGA 目标大小，建议设为总内存的 60%'),
+    ('pga_aggregate_target',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'pga_aggregate_target'",
+     lambda conn, ctx: _get_oracle_total_memory_gb() * 0.25 * 1024 * 1024 * 1024,
+     '字节',
+     'PGA 目标大小，建议设为总内存的 25%'),
+    ('processes',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'processes'",
+     lambda conn, ctx: max(150, _get_yashandb_cpu_cores() * 50),
+     '个',
+     '最大进程数，建议根据 CPU 核心数和连接密度设置'),
+    ('open_cursors',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'open_cursors'",
+     lambda conn, ctx: 500,
+     '个',
+     '单会话最大打开游标数，建议 300-500'),
+    ('session_cached_cursors',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'session_cached_cursors'",
+     lambda conn, ctx: 50,
+     '个',
+     '会话缓存游标数，建议 50'),
+    ('undo_retention',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'undo_retention'",
+     lambda conn, ctx: 3600,
+     '秒',
+     'Undo 保留时间，建议 3600 秒（1小时）'),
+    ('db_file_multiblock_read_count',
+     "SELECT VALUE FROM V$PARAMETER WHERE NAME = 'db_file_multiblock_read_count'",
+     lambda conn, ctx: 128,
+     '块',
+     '多块读计数，建议 128'),
+]
+
+
+def check_yashandb_config_baseline(conn):
+    """
+    检查 YashanDB 配置基线，返回配置差距报告。
+    """
+    result = {
+        'db_size_gb': _get_yashandb_db_size_gb(conn),
+        'qps': 0,
+        'total_memory_gb': _get_oracle_total_memory_gb(),
+        'items': [],
+        'summary': {'critical_count': 0, 'warning_count': 0, 'info_count': 0}
+    }
+    cursor = conn.cursor()
+    ctx = {'db_size_gb': result['db_size_gb'], 'qps': 0}
+
+    for rule in YASHANDB_BASELINE_RULES:
+        param_name = rule[0]
+        query_sql = rule[1]
+        calc_func = rule[2]
+        unit = rule[3]
+        description = rule[4]
+
+        try:
+            cursor.execute(query_sql)
+            row = cursor.fetchone()
+            if row:
+                current_raw = _parse_oracle_value(row[0], unit)
+            else:
+                current_raw = 0
+
+            recommended_raw = calc_func(conn, ctx)
+
+            if recommended_raw > 0 and current_raw > 0:
+                gap_pct = abs(current_raw - recommended_raw) / recommended_raw * 100
+            elif recommended_raw == 0 and current_raw > 0:
+                gap_pct = 100
+            else:
+                gap_pct = 0
+
+            if gap_pct == 0:
+                severity = 'info'
+            elif gap_pct > 50:
+                severity = 'critical'
+            elif gap_pct > 20:
+                severity = 'warning'
+            else:
+                severity = 'info'
+
+            if severity == 'critical':
+                result['summary']['critical_count'] += 1
+            elif severity == 'warning':
+                result['summary']['warning_count'] += 1
+            else:
+                result['summary']['info_count'] += 1
+
+            result['items'].append({
+                'param': param_name,
+                'current': _format_oracle_value(current_raw, unit),
+                'recommended': _format_oracle_value(recommended_raw, unit),
+                'current_raw': current_raw,
+                'recommended_raw': recommended_raw,
+                'gap': _format_oracle_value(abs(current_raw - recommended_raw), unit),
+                'gap_pct': round(gap_pct, 1),
+                'severity': severity,
+                'description': description,
+                'unit': unit,
+            })
+        except Exception:
+            pass
+
+    cursor.close()
+    return result
+
+
+# ═══════════════════════════════════════════════════════
+#  9. 统一入口函数
+# ═══════════════════════════════════════════════════════
 # ═══════════════════════════════════════════════════════
 
 def get_config_baseline(db_type, conn):
@@ -1632,16 +1775,21 @@ def get_config_baseline(db_type, conn):
     """
     if db_type == 'mysql':
         return check_mysql_config_baseline(conn)
-    elif db_type == 'pg':
+    elif db_type in ('pg', 'postgresql'):
+        return check_pg_config_baseline(conn)
+    elif db_type == 'ivorysql':
+        # IvorySQL 基于 PostgreSQL，复用 PG 基线检查
         return check_pg_config_baseline(conn)
     elif db_type == 'oracle':
         return check_oracle_config_baseline(conn)
-    elif db_type == 'dm':
+    elif db_type in ('dm', 'dm8'):
         return check_dm_config_baseline(conn)
     elif db_type == 'sqlserver':
         return check_sqlserver_config_baseline(conn)
     elif db_type == 'tidb':
         return check_tidb_config_baseline(conn)
+    elif db_type == 'yashandb':
+        return check_yashandb_config_baseline(conn)
     else:
         return None
 
@@ -1770,9 +1918,65 @@ def _get_default_baselines():
             'description_zh': 'Binlog 过期秒数（仅 MySQL 8.x），建议不低于 604800（7天）',
             'description_en': 'Binlog expiry seconds (MySQL 8.x only), recommended >= 604800 (7 days)',
         },
+        {
+            'db_type': 'mysql', 'param_name': 'table_open_cache',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'table_open_cache';",
+            'operator': '>=', 'expected_value': '2000',
+            'risk_level': 'MEDIUM',
+            'description_zh': '表缓存数量，建议不低于 2000',
+            'description_en': 'Table open cache, recommended >= 2000',
+        },
+        {
+            'db_type': 'mysql', 'param_name': 'binlog_format',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'binlog_format';",
+            'operator': '=', 'expected_value': 'ROW',
+            'risk_level': 'HIGH',
+            'description_zh': 'Binlog 格式，建议 ROW（最安全）',
+            'description_en': 'Binlog format, recommended ROW (safest)',
+        },
+        {
+            'db_type': 'mysql', 'param_name': 'character_set_server',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'character_set_server';",
+            'operator': '=', 'expected_value': 'utf8mb4',
+            'risk_level': 'LOW',
+            'description_zh': '服务器字符集，建议 utf8mb4',
+            'description_en': 'Server character set, recommended utf8mb4',
+        },
+        {
+            'db_type': 'mysql', 'param_name': 'innodb_log_file_size',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'innodb_log_file_size';",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'MEDIUM',
+            'description_zh': 'InnoDB 日志文件大小（字节），建议不低于 512MB',
+            'description_en': 'InnoDB log file size (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'mysql', 'param_name': 'tmp_table_size',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'tmp_table_size';",
+            'operator': '>=', 'expected_value': '67108864',
+            'risk_level': 'LOW',
+            'description_zh': '临时表大小（字节），建议不低于 64MB',
+            'description_en': 'Tmp table size (bytes), recommended >= 64MB',
+        },
+        {
+            'db_type': 'mysql', 'param_name': 'sort_buffer_size',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'sort_buffer_size';",
+            'operator': '>=', 'expected_value': '1048576',
+            'risk_level': 'LOW',
+            'description_zh': '排序缓冲区大小（字节），建议不低于 1MB',
+            'description_en': 'Sort buffer size (bytes), recommended >= 1MB',
+        },
+        {
+            'db_type': 'mysql', 'param_name': 'interactive_timeout',
+            'query_sql': "SHOW GLOBAL VARIABLES LIKE 'interactive_timeout';",
+            'operator': '<=', 'expected_value': '600',
+            'risk_level': 'LOW',
+            'description_zh': '交互式连接超时（秒），建议不超过 600',
+            'description_en': 'Interactive timeout (seconds), recommended <= 600',
+        },
         # ── PostgreSQL ─────────────────────────────────────
         {
-            'db_type': 'pg', 'param_name': 'max_connections',
+            'db_type': 'postgresql', 'param_name': 'max_connections',
             'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'max_connections';",
             'operator': '>=', 'expected_value': '200',
             'risk_level': 'MEDIUM',
@@ -1780,7 +1984,7 @@ def _get_default_baselines():
             'description_en': 'Max connections, recommended >= 200',
         },
         {
-            'db_type': 'pg', 'param_name': 'shared_buffers',
+            'db_type': 'postgresql', 'param_name': 'shared_buffers',
             'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'shared_buffers';",
             'operator': '>=', 'expected_value': '256MB',
             'risk_level': 'HIGH',
@@ -1788,7 +1992,7 @@ def _get_default_baselines():
             'description_en': 'Shared buffers, recommended >= 256MB',
         },
         {
-            'db_type': 'pg', 'param_name': 'effective_cache_size',
+            'db_type': 'postgresql', 'param_name': 'effective_cache_size',
             'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'effective_cache_size';",
             'operator': '>=', 'expected_value': '4GB',
             'risk_level': 'MEDIUM',
@@ -1796,7 +2000,7 @@ def _get_default_baselines():
             'description_en': 'Effective cache size, recommended 75% of total memory',
         },
         {
-            'db_type': 'pg', 'param_name': 'log_min_duration_statement',
+            'db_type': 'postgresql', 'param_name': 'log_min_duration_statement',
             'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'log_min_duration_statement';",
             'operator': '<=', 'expected_value': '2000',
             'risk_level': 'MEDIUM',
@@ -1804,12 +2008,84 @@ def _get_default_baselines():
             'description_en': 'Slow query threshold (ms), recommended <= 2000',
         },
         {
-            'db_type': 'pg', 'param_name': 'wal_level',
+            'db_type': 'postgresql', 'param_name': 'wal_level',
             'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'wal_level';",
             'operator': '=', 'expected_value': 'replica',
             'risk_level': 'LOW',
             'description_zh': 'WAL 级别，建议 replica 以支持流复制和备份',
             'description_en': 'WAL level, recommended replica for replication support',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'work_mem',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'work_mem';",
+            'operator': '>=', 'expected_value': '4MB',
+            'risk_level': 'MEDIUM',
+            'description_zh': '工作内存，建议不低于 4MB',
+            'description_en': 'Work mem, recommended >= 4MB',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'maintenance_work_mem',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'maintenance_work_mem';",
+            'operator': '>=', 'expected_value': '128MB',
+            'risk_level': 'LOW',
+            'description_zh': '维护工作内存，建议不低于 128MB',
+            'description_en': 'Maintenance work mem, recommended >= 128MB',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'random_page_cost',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'random_page_cost';",
+            'operator': '<=', 'expected_value': '1.1',
+            'risk_level': 'LOW',
+            'description_zh': '随机页面读取成本（SSD 建议 1.1），影响查询计划',
+            'description_en': 'Random page cost (SSD recommended 1.1), affects query plans',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'effective_io_concurrency',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'effective_io_concurrency';",
+            'operator': '>=', 'expected_value': '200',
+            'risk_level': 'LOW',
+            'description_zh': '并发 I/O 数（SSD 建议 200），影响并行查询',
+            'description_en': 'Effective IO concurrency (SSD recommended 200), affects parallel queries',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'max_wal_size',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'max_wal_size';",
+            'operator': '>=', 'expected_value': '1GB',
+            'risk_level': 'MEDIUM',
+            'description_zh': '最大 WAL 大小，建议不低于 1GB',
+            'description_en': 'Max WAL size, recommended >= 1GB',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'checkpoint_completion_target',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'checkpoint_completion_target';",
+            'operator': '>=', 'expected_value': '0.9',
+            'risk_level': 'MEDIUM',
+            'description_zh': 'CheckPoint 完成目标，建议不低于 0.9',
+            'description_en': 'Checkpoint completion target, recommended >= 0.9',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'autovacuum',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'autovacuum';",
+            'operator': '=', 'expected_value': 'on',
+            'risk_level': 'HIGH',
+            'description_zh': '自动 VACUUM，建议开启',
+            'description_en': 'Autovacuum, recommended on',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'log_autovacuum_min_duration',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'log_autovacuum_min_duration';",
+            'operator': '=', 'expected_value': '1000',
+            'risk_level': 'LOW',
+            'description_zh': '自动 VACUUM 日志阈值（毫秒），建议 1000ms',
+            'description_en': 'Log autovacuum min duration (ms), recommended 1000',
+        },
+        {
+            'db_type': 'postgresql', 'param_name': 'shared_preload_libraries',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'shared_preload_libraries';",
+            'operator': 'like', 'expected_value': 'pg_stat_statements',
+            'risk_level': 'MEDIUM',
+            'description_zh': '预加载库，建议包含 pg_stat_statements',
+            'description_en': 'Shared preload libraries, recommended include pg_stat_statements',
         },
         # ── Oracle ─────────────────────────────────────────
         {
@@ -1836,9 +2112,73 @@ def _get_default_baselines():
             'description_zh': 'UNDO 保留时间（秒），建议不低于 900',
             'description_en': 'Undo retention (seconds), recommended >= 900',
         },
-        # ── DM8 达梦 ───────────────────────────────────────
         {
-            'db_type': 'dm', 'param_name': 'MAX_SESSIONS',
+            'db_type': 'oracle', 'param_name': 'pga_aggregate_target',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'pga_aggregate_target';",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'MEDIUM',
+            'description_zh': 'PGA 目标大小（字节），建议不低于 512MB',
+            'description_en': 'PGA aggregate target (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'open_cursors',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'open_cursors';",
+            'operator': '>=', 'expected_value': '300',
+            'risk_level': 'MEDIUM',
+            'description_zh': '单会话最大打开游标数，建议不低于 300',
+            'description_en': 'Open cursors per session, recommended >= 300',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'log_archive_start',
+            'query_sql': "SELECT log_mode FROM v$database;",
+            'operator': '=', 'expected_value': 'ARCHIVELOG',
+            'risk_level': 'HIGH',
+            'description_zh': '归档模式，建议开启 ARCHIVELOG',
+            'description_en': 'Archive mode, recommended ARCHIVELOG',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'db_block_checksum',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'db_block_checksum';",
+            'operator': '=', 'expected_value': 'TRUE',
+            'risk_level': 'HIGH',
+            'description_zh': '数据块校验，建议开启',
+            'description_en': 'DB block checksum, recommended TRUE',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'securefile',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'db_securefile';",
+            'operator': '=', 'expected_value': 'ALWAYS',
+            'risk_level': 'LOW',
+            'description_zh': '安全大文件，建议 ALWAYS',
+            'description_en': 'DB securefile, recommended ALWAYS',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'audit_trail',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'audit_trail';",
+            'operator': '!=', 'expected_value': 'NONE',
+            'risk_level': 'MEDIUM',
+            'description_zh': '审计追踪，建议开启（非 NONE）',
+            'description_en': 'Audit trail, recommended not NONE',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'resource_limit',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'resource_limit';",
+            'operator': '=', 'expected_value': 'TRUE',
+            'risk_level': 'LOW',
+            'description_zh': '资源限制，建议开启',
+            'description_en': 'Resource limit, recommended TRUE',
+        },
+        {
+            'db_type': 'oracle', 'param_name': 'optimizer_mode',
+            'query_sql': "SELECT name, value FROM v$parameter WHERE name = 'optimizer_mode';",
+            'operator': '=', 'expected_value': 'ALL_ROWS',
+            'risk_level': 'LOW',
+            'description_zh': '优化器模式，建议 ALL_ROWS',
+            'description_en': 'Optimizer mode, recommended ALL_ROWS',
+        },
+        # ── DM ────────────────────────────────────────────
+        {
+            'db_type': 'dm8', 'param_name': 'MAX_SESSIONS',
             'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'MAX_SESSIONS';",
             'operator': '>=', 'expected_value': '200',
             'risk_level': 'MEDIUM',
@@ -1846,12 +2186,68 @@ def _get_default_baselines():
             'description_en': 'Max sessions, recommended >= 200',
         },
         {
-            'db_type': 'dm', 'param_name': 'MEMORY_TARGET',
+            'db_type': 'dm8', 'param_name': 'MEMORY_TARGET',
             'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'MEMORY_TARGET';",
             'operator': '>=', 'expected_value': '1073741824',
             'risk_level': 'HIGH',
             'description_zh': '内存目标大小（字节），建议不低于 1GB',
             'description_en': 'Memory target size (bytes), recommended >= 1GB',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'BUFFER',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'BUFFER';",
+            'operator': '>=', 'expected_value': '100',
+            'risk_level': 'MEDIUM',
+            'description_zh': '缓冲区大小（MB），建议不低于 100MB',
+            'description_en': 'Buffer size (MB), recommended >= 100MB',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'SORT_BUF_SIZE',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'SORT_BUF_SIZE';",
+            'operator': '>=', 'expected_value': '50',
+            'risk_level': 'LOW',
+            'description_zh': '排序缓冲区大小（MB），建议不低于 50MB',
+            'description_en': 'Sort buffer size (MB), recommended >= 50MB',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'ARCHIVE_TIMING',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'ARCHIVE_TIMING';",
+            'operator': '!=', 'expected_value': '0',
+            'risk_level': 'HIGH',
+            'description_zh': '归档模式，建议开启（非 0）',
+            'description_en': 'Archive mode, recommended enabled (non-zero)',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'COMMIT_RETENTION_TIME',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'COMMIT_RETENTION_TIME';",
+            'operator': '>=', 'expected_value': '900',
+            'risk_level': 'MEDIUM',
+            'description_zh': '提交保留时间（秒），建议不低于 900',
+            'description_en': 'Commit retention time (seconds), recommended >= 900',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'CASE_SENSITIVE',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'CASE_SENSITIVE';",
+            'operator': '!=', 'expected_value': '0',
+            'risk_level': 'LOW',
+            'description_zh': '大小写敏感，建议开启',
+            'description_en': 'Case sensitive, recommended enabled',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'RLOG_APPEND_CFG',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'RLOG_APPEND_CFG';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'MEDIUM',
+            'description_zh': '重做日志追加模式，建议 1',
+            'description_en': 'Redo log append mode, recommended 1',
+        },
+        {
+            'db_type': 'dm8', 'param_name': 'ENABLE_ENCRYPT',
+            'query_sql': "SELECT PARA_NAME, PARA_VALUE FROM V$DM_INI WHERE PARA_NAME = 'ENABLE_ENCRYPT';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'LOW',
+            'description_zh': '透明数据加密，建议开启',
+            'description_en': 'Transparent data encryption, recommended enabled',
         },
         # ── SQL Server ─────────────────────────────────────
         {
@@ -1870,6 +2266,86 @@ def _get_default_baselines():
             'description_zh': '最大并行度，建议不超过 8',
             'description_en': 'Max degree of parallelism, recommended <= 8',
         },
+        {
+            'db_type': 'sqlserver', 'param_name': 'cost threshold for parallelism',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'cost threshold for parallelism';",
+            'operator': '>=', 'expected_value': '50',
+            'risk_level': 'LOW',
+            'description_zh': '并行成本阈值，建议不低于 50',
+            'description_en': 'Cost threshold for parallelism, recommended >= 50',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'fill factor (%)',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'fill factor (%)';",
+            'operator': '>=', 'expected_value': '80',
+            'risk_level': 'LOW',
+            'description_zh': '填充因子，建议不低于 80%',
+            'description_en': 'Fill factor, recommended >= 80%',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'backup compression default',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'backup compression default';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'MEDIUM',
+            'description_zh': '备份压缩默认开启，建议启用',
+            'description_en': 'Backup compression default, recommended enabled',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'remote admin connections',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'remote admin connections';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'MEDIUM',
+            'description_zh': '远程管理员连接，建议开启',
+            'description_en': 'Remote admin connections, recommended enabled',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'min server memory (MB)',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'min server memory (MB)';",
+            'operator': '>=', 'expected_value': '256',
+            'risk_level': 'LOW',
+            'description_zh': '最小服务器内存（MB），建议不低于 256',
+            'description_en': 'Min server memory (MB), recommended >= 256',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'awe enabled',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'awe enabled';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'LOW',
+            'description_zh': 'AWE 启用（32位系统），建议开启',
+            'description_en': 'AWE enabled (32-bit systems), recommended enabled',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'optimize for ad hoc workloads',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'optimize for ad hoc workloads';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'MEDIUM',
+            'description_zh': '优化即席工作负载，建议开启',
+            'description_en': 'Optimize for ad hoc workloads, recommended enabled',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'default trace enabled',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'default trace enabled';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'LOW',
+            'description_zh': '默认跟踪，建议开启',
+            'description_en': 'Default trace enabled, recommended enabled',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'show advanced options',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'show advanced options';",
+            'operator': '=', 'expected_value': '1',
+            'risk_level': 'LOW',
+            'description_zh': '显示高级选项，建议开启',
+            'description_en': 'Show advanced options, recommended enabled',
+        },
+        {
+            'db_type': 'sqlserver', 'param_name': 'xc max degrees of parallelism',
+            'query_sql': "SELECT name, value_in_use FROM sys.configurations WHERE name = 'xc max degrees of parallelism';",
+            'operator': '>=', 'expected_value': '0',
+            'risk_level': 'LOW',
+            'description_zh': 'XC 最大并行度，建议 0 或根据环境调整',
+            'description_en': 'XC max degrees of parallelism, recommended 0 or adjusted per environment',
+        },
         # ── TiDB ──────────────────────────────────────────
         {
             'db_type': 'tidb', 'param_name': 'max_connections',
@@ -1878,5 +2354,191 @@ def _get_default_baselines():
             'risk_level': 'MEDIUM',
             'description_zh': '最大连接数，建议不低于 200',
             'description_en': 'Max connections, recommended >= 200',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'log-slow-threshold',
+            'query_sql': "SHOW CONFIG WHERE name = 'log-slow-threshold';",
+            'operator': '<=', 'expected_value': '100',
+            'risk_level': 'MEDIUM',
+            'description_zh': '慢查询阈值（毫秒），建议不超过 100ms',
+            'description_en': 'Slow query threshold (ms), recommended <= 100',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'mem-quota-query',
+            'query_sql': "SHOW VARIABLES LIKE 'mem_quota_query';",
+            'operator': '>=', 'expected_value': '34359738368',
+            'risk_level': 'MEDIUM',
+            'description_zh': '单查询内存限制（字节），建议不低于 32GB',
+            'description_en': 'Memory quota per query (bytes), recommended >= 32GB',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'tidb_distsql_scan_concurrency',
+            'query_sql': "SHOW VARIABLES LIKE 'tidb_distsql_scan_concurrency';",
+            'operator': '>=', 'expected_value': '15',
+            'risk_level': 'LOW',
+            'description_zh': '分布式 SQL 扫描并发数，建议不低于 15',
+            'description_en': 'DistSQL scan concurrency, recommended >= 15',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'tidb_index_join_batch_size',
+            'query_sql': "SHOW VARIABLES LIKE 'tidb_index_join_batch_size';",
+            'operator': '>=', 'expected_value': '25000',
+            'risk_level': 'LOW',
+            'description_zh': '索引 Join 批次大小，建议不低于 25000',
+            'description_en': 'Index join batch size, recommended >= 25000',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'tidb_checksum_table_concurrency',
+            'query_sql': "SHOW VARIABLES LIKE 'tidb_checksum_table_concurrency';",
+            'operator': '>=', 'expected_value': '6',
+            'risk_level': 'LOW',
+            'description_zh': '表校验并发数，建议不低于 6',
+            'description_en': 'Checksum table concurrency, recommended >= 6',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'tidb_batch_insert',
+            'query_sql': "SHOW VARIABLES LIKE 'tidb_batch_insert';",
+            'operator': '=', 'expected_value': 'ON',
+            'risk_level': 'LOW',
+            'description_zh': '批量插入，建议开启',
+            'description_en': 'Batch insert, recommended ON',
+        },
+        {
+            'db_type': 'tidb', 'param_name': 'tidb_batch_delete',
+            'query_sql': "SHOW VARIABLES LIKE 'tidb_batch_delete';",
+            'operator': '=', 'expected_value': 'ON',
+            'risk_level': 'LOW',
+            'description_zh': '批量删除，建议开启',
+            'description_en': 'Batch delete, recommended ON',
+        },
+        # ── IvorySQL ──────────────────────────────────────
+        {
+            'db_type': 'ivorysql', 'param_name': 'max_connections',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'max_connections';",
+            'operator': '>=', 'expected_value': '200',
+            'risk_level': 'MEDIUM',
+            'description_zh': '最大连接数，建议不低于 200',
+            'description_en': 'Max connections, recommended >= 200',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'shared_buffers',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'shared_buffers';",
+            'operator': '>=', 'expected_value': '256MB',
+            'risk_level': 'HIGH',
+            'description_zh': '共享缓冲区大小，建议不低于 256MB',
+            'description_en': 'Shared buffers, recommended >= 256MB',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'effective_cache_size',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'effective_cache_size';",
+            'operator': '>=', 'expected_value': '4GB',
+            'risk_level': 'MEDIUM',
+            'description_zh': '有效缓存大小，建议设置为总内存的 75%',
+            'description_en': 'Effective cache size, recommended 75% of total memory',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'log_min_duration_statement',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'log_min_duration_statement';",
+            'operator': '<=', 'expected_value': '2000',
+            'risk_level': 'MEDIUM',
+            'description_zh': '慢查询阈值（毫秒），建议不超过 2000ms',
+            'description_en': 'Slow query threshold (ms), recommended <= 2000',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'wal_level',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'wal_level';",
+            'operator': '=', 'expected_value': 'replica',
+            'risk_level': 'LOW',
+            'description_zh': 'WAL 级别，建议 replica 以支持流复制和备份',
+            'description_en': 'WAL level, recommended replica for replication support',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'work_mem',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'work_mem';",
+            'operator': '>=', 'expected_value': '4MB',
+            'risk_level': 'MEDIUM',
+            'description_zh': '工作内存，建议不低于 4MB',
+            'description_en': 'Work mem, recommended >= 4MB',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'maintenance_work_mem',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'maintenance_work_mem';",
+            'operator': '>=', 'expected_value': '128MB',
+            'risk_level': 'LOW',
+            'description_zh': '维护工作内存，建议不低于 128MB',
+            'description_en': 'Maintenance work mem, recommended >= 128MB',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'random_page_cost',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'random_page_cost';",
+            'operator': '<=', 'expected_value': '1.1',
+            'risk_level': 'LOW',
+            'description_zh': '随机页面读取成本（SSD 建议 1.1），影响查询计划',
+            'description_en': 'Random page cost (SSD recommended 1.1), affects query plans',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'autovacuum',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'autovacuum';",
+            'operator': '=', 'expected_value': 'on',
+            'risk_level': 'HIGH',
+            'description_zh': '自动 VACUUM，建议开启',
+            'description_en': 'Autovacuum, recommended on',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'max_wal_size',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'max_wal_size';",
+            'operator': '>=', 'expected_value': '1GB',
+            'risk_level': 'MEDIUM',
+            'description_zh': '最大 WAL 大小，建议不低于 1GB',
+            'description_en': 'Max WAL size, recommended >= 1GB',
+        },
+        {
+            'db_type': 'ivorysql', 'param_name': 'shared_preload_libraries',
+            'query_sql': "SELECT name, setting FROM pg_settings WHERE name = 'shared_preload_libraries';",
+            'operator': 'like', 'expected_value': 'pg_stat_statements',
+            'risk_level': 'MEDIUM',
+            'description_zh': '预加载库，建议包含 pg_stat_statements',
+            'description_en': 'Shared preload libraries, recommended include pg_stat_statements',
+        },
+        # ── YashanDB ──────────────────────────────────────
+        {
+            'db_type': 'yashandb', 'param_name': 'processes',
+            'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME = 'processes';",
+            'operator': '>=', 'expected_value': '150',
+            'risk_level': 'MEDIUM',
+            'description_zh': '最大进程数，建议不低于 150',
+            'description_en': 'Max processes, recommended >= 150',
+        },
+        {
+            'db_type': 'yashandb', 'param_name': 'sga_target',
+            'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME = 'sga_target';",
+            'operator': '>=', 'expected_value': '1073741824',
+            'risk_level': 'HIGH',
+            'description_zh': 'SGA 目标大小（字节），建议不低于 1GB',
+            'description_en': 'SGA target size (bytes), recommended >= 1GB',
+        },
+        {
+            'db_type': 'yashandb', 'param_name': 'pga_aggregate_target',
+            'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME = 'pga_aggregate_target';",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'MEDIUM',
+            'description_zh': 'PGA 目标大小（字节），建议不低于 512MB',
+            'description_en': 'PGA aggregate target (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'yashandb', 'param_name': 'open_cursors',
+            'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME = 'open_cursors';",
+            'operator': '>=', 'expected_value': '300',
+            'risk_level': 'MEDIUM',
+            'description_zh': '单会话最大打开游标数，建议不低于 300',
+            'description_en': 'Open cursors per session, recommended >= 300',
+        },
+        {
+            'db_type': 'yashandb', 'param_name': 'undo_retention',
+            'query_sql': "SELECT NAME, VALUE FROM V$PARAMETER WHERE NAME = 'undo_retention';",
+            'operator': '>=', 'expected_value': '900',
+            'risk_level': 'MEDIUM',
+            'description_zh': 'UNDO 保留时间（秒），建议不低于 900',
+            'description_en': 'Undo retention (seconds), recommended >= 900',
         },
     ]
