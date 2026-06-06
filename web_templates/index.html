@@ -865,15 +865,18 @@ select option { background: var(--surface2); }
 }
 .overview-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
 }
 .overview-card {
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 20px;
+  border-radius: 10px;
+  padding: 12px;
   transition: all var(--trans);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .overview-card:hover {
   border-color: var(--accent2);
@@ -897,6 +900,103 @@ select option { background: var(--surface2); }
 .overview-card .card-subtitle {
   font-size: 11px; color: var(--text-muted);
 }
+/* Chart container inside cards */
+.chart-card-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  max-height: 220px;
+  position: relative;
+  overflow: hidden;
+}
+.chart-card-body canvas {
+  max-height: 100% !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+/* ─── 数据库图标墙 ─── */
+.db-icon-wall {
+  margin-top: 18px;
+  padding: 14px 0 8px;
+  border-top: 1px solid var(--border);
+}
+.db-icon-wall-inner {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.db-icon-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: default;
+  transition: transform .2s ease;
+}
+.db-icon-item:hover {
+  transform: translateY(-3px);
+}
+.db-icon-item img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: grayscale(.3);
+  transition: filter .2s ease;
+}
+.db-icon-item:hover img {
+  filter: grayscale(0);
+}
+.db-icon-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  font-size: 26px;
+}
+.db-icon-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: .5px;
+}
+/* ─── 底部状态栏 ─── */
+.status-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 28px;
+  background: rgba(13,17,23,.92);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  font-size: 11px;
+  color: var(--text-muted);
+  z-index: 900;
+  backdrop-filter: blur(6px);
+  padding: 0 20px;
+}
+.status-bar .sb-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.status-bar .sb-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e88;
+  flex-shrink: 0;
+}
+.status-bar .sb-dot.warn { background: #f97316; box-shadow: 0 0 6px #f9731688; }
+.status-bar .sb-val { color: var(--text); font-weight: 600; }
+body { padding-bottom: 32px !important; }
 .overview-card .card-count {
   font-size: 32px; font-weight: 700;
   margin-bottom: 8px;
@@ -2241,22 +2341,28 @@ async function executeFixSql(taskId, sql) {
 /* ─── Slogan 动画 ─── */
 .slogan-wrapper {
   text-align: center;
-  padding: 48px 20px 32px;
-  min-height: 160px;
+  padding: 18px 20px 14px;
+  height: 90px;
+  min-height: 90px;
+  max-height: 90px;
+  overflow: hidden;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   position: relative;
+  flex-shrink: 0;
 }
 .slogan-container {
   position: relative;
   display: inline-block;
+  white-space: nowrap;
 }
 .slogan-text {
-  font-size: 40px;
+  font-size: 28px;
   font-weight: 800;
-  letter-spacing: 6px;
+  letter-spacing: 4px;
   background: linear-gradient(135deg, #2ea043, #58a6ff, #bc8cff, #f97316);
   background-size: 300% 300%;
   -webkit-background-clip: text;
@@ -2265,6 +2371,12 @@ async function executeFixSql(taskId, sql) {
   animation: sloganGradient 5s ease infinite;
   position: relative;
   display: inline-block;
+  white-space: nowrap;
+  /* 用 transition 控制进入/离开，放弃 animation 递归触发 */
+  transition: opacity .7s cubic-bezier(.16,1,.3,1),
+             transform .7s cubic-bezier(.16,1,.3,1);
+  opacity: 0;
+  transform: translateY(22px) scale(.9);
 }
 /* 打字机光标 */
 .slogan-text.typing::after {
@@ -2303,23 +2415,15 @@ async function executeFixSql(taskId, sql) {
   0%,100% { opacity:.4; transform: scale(.95); }
   50%      { opacity:1;   transform: scale(1.06); }
 }
-/* 进入 */
+/* 进入（transition 控制） */
 .slogan-text.anim-enter {
-  animation: sloganEnter .7s cubic-bezier(.16,1,.3,1) forwards,
-             sloganGradient 5s ease infinite .7s;
-  -webkit-text-fill-color: transparent;
+  opacity: 1 !important;
+  transform: translateY(0) scale(1);
 }
-@keyframes sloganEnter {
-  from { opacity:0; transform: translateY(25px) scale(.88); }
-  to   { opacity:1; transform: translateY(0) scale(1); }
-}
-/* 离开 */
+/* 离开（transition 控制） */
 .slogan-text.anim-leave {
-  animation: sloganLeave .45s ease-in forwards !important;
-}
-@keyframes sloganLeave {
-  from { opacity:1; transform: translateY(0) scale(1); }
-  to   { opacity:0; transform: translateY(-18px) scale(.94); }
+  opacity: 0 !important;
+  transform: translateY(-16px) scale(.92);
 }
 /* 副标题 */
 .slogan-sub {
@@ -3695,10 +3799,7 @@ function formatBytes(bytes) {
 
         <!-- 首页概览卡片 -->
         <div class="home-overview" id="home-overview-section" style="display:none;">
-          <div class="section-header">
-            <h2 class="section-title" data-i18n="webui.home_overview_title">系统概览</h2>
-            <span class="section-desc" data-i18n="webui.home_overview_subtitle">运行状态实时监控</span>
-          </div>
+          <div class="section-header" style="display:none;"></div>
           <div class="overview-grid">
             <!-- 健康评分仪表盘 -->
             <div class="overview-card">
@@ -3776,49 +3877,96 @@ function formatBytes(bytes) {
           </div>
         </div>
 
-        <!-- 核心功能区 -->
+        <!-- 数据统计图表 -->
         <div class="home-section" style="margin-top:24px;">
           <div class="section-header">
-            <h2 class="section-title" data-i18n="webui.home_section_title">核心功能</h2>
-            <span class="section-desc" data-i18n="webui.home_section_desc">一站式数据库健康巡检解决方案</span>
+            <h2 class="section-title" data-i18n="webui.home_chart_title">数据统计</h2>
+            <span class="section-desc" data-i18n="webui.home_chart_desc">模板、巡检、基线、规则统计</span>
           </div>
-          <div class="feature-grid-new">
-            <div class="feature-card">
-              <div class="fc-icon">🗄️</div>
-              <div class="fc-content">
-                <h3 data-i18n="webui.home_multi_db">多数据库支持</h3>
-                <p data-i18n="webui.home_multi_db_desc">MySQL · PostgreSQL · Oracle · SQL Server · DM8 · TiDB · IvorySQL</p>
+          <div class="overview-grid" id="home-charts-grid">
+            <!-- 模板统计 -->
+            <div class="overview-card">
+              <div class="card-header">
+                <div class="card-icon" style="background:linear-gradient(135deg,#3b82f6,#2563eb);">📋</div>
+                <div>
+                  <div class="card-title" data-i18n="webui.home_template_stats">模板统计</div>
+                  <div class="card-subtitle" data-i18n="webui.home_template_stats_sub">各模板章节数</div>
+                </div>
               </div>
+              <canvas class="chart-card-body" id="home-template-chart"></canvas>
             </div>
-            <div class="feature-card">
-              <div class="fc-icon">📊</div>
-              <div class="fc-content">
-                <h3 data-i18n="webui.home_metrics">全面指标采集</h3>
-                <p data-i18n="webui.home_metrics_desc">连接、内存、锁、复制、索引、慢查询等 20+ 项核心指标</p>
+            <!-- 巡检统计 -->
+            <div class="overview-card">
+              <div class="card-header">
+                <div class="card-icon" style="background:linear-gradient(135deg,#f97316,#ea580c);">📊</div>
+                <div>
+                  <div class="card-title" data-i18n="webui.home_inspection_stats">巡检统计</div>
+                  <div class="card-subtitle" data-i18n="webui.home_inspection_stats_sub">各数据库巡检次数</div>
+                </div>
               </div>
+              <canvas class="chart-card-body" id="home-inspection-chart"></canvas>
             </div>
-            <div class="feature-card">
-              <div class="fc-icon">⚠️</div>
-              <div class="fc-content">
-                <h3 data-i18n="webui.home_ai">AI 智能诊断</h3>
-                <p data-i18n="webui.home_ai_desc">自动识别阈值异常，给出风险等级与处理建议</p>
+            <!-- 基线统计 -->
+            <div class="overview-card">
+              <div class="card-header">
+                <div class="card-icon" style="background:linear-gradient(135deg,#22c55e,#16a34a);">📈</div>
+                <div>
+                  <div class="card-title" data-i18n="webui.home_baseline_stats">基线统计</div>
+                  <div class="card-subtitle" data-i18n="webui.home_baseline_stats_sub">各数据库基线数</div>
+                </div>
               </div>
+              <canvas class="chart-card-body" id="home-baseline-chart"></canvas>
             </div>
-            <div class="feature-card">
-              <div class="fc-icon">📝</div>
-              <div class="fc-content">
-                <h3 data-i18n="webui.home_report">专业 Word 报告</h3>
-                <p data-i18n="webui.home_report_desc">规范模板，覆盖封面、配置、性能、安全等完整章节</p>
+            <!-- 规则统计 -->
+            <div class="overview-card">
+              <div class="card-header">
+                <div class="card-icon" style="background:linear-gradient(135deg,#a855f7,#9333ea);">📏</div>
+                <div>
+                  <div class="card-title" data-i18n="webui.home_rule_stats">规则统计</div>
+                  <div class="card-subtitle" data-i18n="webui.home_rule_stats_sub">各数据库规则数</div>
+                </div>
               </div>
+              <canvas class="chart-card-body" id="home-rule-chart"></canvas>
             </div>
-            <div class="feature-card">
-              <div class="fc-icon">⏰</div>
-              <div class="fc-content">
-                <h3 data-i18n="webui.home_scheduled">定时巡检</h3>
-                <p data-i18n="webui.home_scheduled_desc">配置 Cron 表达式，自动执行巡检并推送报告</p>
+          </div>
+          <!-- 数据库类型图标墙 -->
+          <div class="db-icon-wall">
+            <div class="db-icon-wall-inner">
+              <div class="db-icon-item" title="MySQL">
+                <img src="/mysql.png" alt="MySQL" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">🐬</span>
+                <span class="db-icon-label">MySQL</span>
+              </div>
+              <div class="db-icon-item" title="PostgreSQL">
+                <img src="/postgresql.png" alt="PostgreSQL" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">🐘</span>
+                <span class="db-icon-label">PostgreSQL</span>
+              </div>
+              <div class="db-icon-item" title="Oracle">
+                <img src="/oracle.png" alt="Oracle" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">📰</span>
+                <span class="db-icon-label">Oracle</span>
+              </div>
+              <div class="db-icon-item" title="DM8">
+                <img src="/dm.png" alt="DM8" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">🏛️</span>
+                <span class="db-icon-label">DM8</span>
+              </div>
+              <div class="db-icon-item" title="SQL Server">
+                <img src="/sqlserver.png" alt="SQL Server" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">🪟</span>
+                <span class="db-icon-label">SQL Server</span>
+              </div>
+              <div class="db-icon-item" title="TiDB">
+                <img src="/tidb.png" alt="TiDB" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">♟</span>
+                <span class="db-icon-label">TiDB</span>
+              </div>
+              <div class="db-icon-item" title="IvorySQL">
+                <img src="/ivorysql.png" alt="IvorySQL" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">🦣</span>
+                <span class="db-icon-label">IvorySQL</span>
+              </div>
+              <div class="db-icon-item" title="YashanDB">
+                <img src="/yashandb.png" alt="YashanDB" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="db-icon-fallback" style="display:none;">🗻</span>
+                <span class="db-icon-label">YashanDB</span>
               </div>
             </div>
           </div>
+
         </div>
 
       </div>
@@ -7929,7 +8077,8 @@ function renderTrendCharts(trend, inst) {
     const canvasId = 'chart-' + cfg.key;
     const wrapper = document.createElement('div');
     wrapper.style.cssText = 'background:var(--surface2);border-radius:10px;padding:16px';
-    wrapper.innerHTML = `<div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">${cfg.label}</div><canvas id="${canvasId}" height="160"></canvas>`;
+    wrapper.classList.add('chart-card-body');
+    wrapper.innerHTML = `<div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">${cfg.label}</div><canvas id="${canvasId}"></canvas>`;
     grid.appendChild(wrapper);
 
     // 用纯 SVG/Canvas 自绘折线图（不依赖 Chart.js）
@@ -7942,7 +8091,7 @@ function drawLineChart(canvasId, labels, values, cfg) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const W = canvas.offsetWidth || 300;
-  const H = 160;
+  const H = canvas.offsetHeight || 160;
   canvas.width = W;
   canvas.height = H;
   const pad = { top: 10, right: 10, bottom: 30, left: 40 };
@@ -8023,6 +8172,155 @@ function drawLineChart(canvasId, labels, values, cfg) {
       ctx.fillText(l.slice(-5), toX(i), H - 6);
     }
   });
+}
+
+// ─── 横向条形图（模板统计：每个模板章节数）───
+function drawBarChart(canvasId, labels, values, colors) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const W = canvas.offsetWidth || 300;
+  const H = canvas.offsetHeight || 160;
+  canvas.width = W;
+  canvas.height = H;
+
+  const n = values.length;
+  const rowH = Math.min(28, Math.max(16, (H - 20) / n));
+  const pad = { top: 10, right: 40, bottom: 10, left: 90 };
+  const chartW = W - pad.left - pad.right;
+  const chartH = rowH * n;
+  const startY = pad.top + (H - pad.top - pad.bottom - chartH) / 2;
+
+  const maxV = Math.max(...values, 1);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // 背景网格线（垂直）
+  ctx.strokeStyle = '#30363d';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const x = pad.left + (chartW / 4) * i;
+    ctx.beginPath(); ctx.moveTo(x, startY); ctx.lineTo(x, startY + chartH); ctx.stroke();
+  }
+
+  // 条形 + 标签
+  labels.forEach((l, i) => {
+    const y = startY + i * rowH + (rowH - 14) / 2;
+    const v = values[i];
+    const barW = (v / maxV) * chartW;
+    const color = colors[i % colors.length];
+
+    // 左侧标签（模板名）
+    ctx.fillStyle = '#8b949e';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    let label = l;
+    const maxLW = pad.left - 10;
+    if (ctx.measureText(label).width > maxLW) {
+      while (ctx.measureText(label + '…').width > maxLW && label.length > 0) label = label.slice(0, -1);
+      label += '…';
+    }
+    ctx.fillText(label, pad.left - 6, y + 7);
+
+    // 条形背景（灰色底）
+    ctx.fillStyle = '#21262d';
+    ctx.beginPath();
+    ctx.roundRect(pad.left, y, chartW, 14, [3, 3, 3, 3]);
+    ctx.fill();
+
+    // 条形（渐变）
+    const grad = ctx.createLinearGradient(pad.left, y, pad.left + barW, y);
+    grad.addColorStop(0, color + 'cc');
+    grad.addColorStop(1, color + '44');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(pad.left, y, barW, 14, [3, 3, 3, 3]);
+    ctx.fill();
+
+    // 右侧数值
+    ctx.fillStyle = '#c9d1d9';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(v, pad.left + barW + 5, y + 7);
+  });
+
+  // 鼠标悬停 tooltip
+  canvas.onmousemove = function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    let found = false;
+    for (let i = 0; i < n; i++) {
+      const y = startY + i * rowH;
+      if (my >= y && my <= y + rowH && mx >= 0 && mx <= W) {
+        canvas.title = labels[i] + '：' + values[i] + ' 章';
+        found = true;
+        break;
+      }
+    }
+    if (!found) canvas.title = '';
+  };
+}
+
+// ─── 饼图（巡检/基线/规则统计：各数据库占比）───
+function drawPieChart(canvasId, labels, values, colors) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const W = canvas.offsetWidth || 300;
+  const H = canvas.offsetHeight || 160;
+  canvas.width = W;
+  canvas.height = H;
+  const cx = W * 0.4;
+  const cy = H / 2;
+  const R = Math.min(W * 0.35, H * 0.45);
+
+  ctx.clearRect(0, 0, W, H);
+
+  const total = values.reduce((s, v) => s + v, 0) || 1;
+  let startAngle = -Math.PI / 2;
+  const eps = 1e-6;
+
+  values.forEach((v, i) => {
+    if (v <= eps) return;
+    const sliceAngle = (v / total) * Math.PI * 2;
+    const endAngle = startAngle + sliceAngle;
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, R, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fill();
+    startAngle = endAngle;
+  });
+
+  // 图例（右侧）
+  const legendX = W * 0.72;
+  let legendY = cy - labels.length * 10;
+  ctx.font = '11px sans-serif';
+  labels.forEach((l, i) => {
+    if (values[i] <= eps) return;
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.beginPath();
+    ctx.arc(legendX, legendY + 5, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#8b949e';
+    ctx.textAlign = 'left';
+    const pct = total > 0 ? Math.round(values[i] / total * 100) : 0;
+    ctx.fillText(`${l} ${values[i]} (${pct}%)`, legendX + 10, legendY + 9);
+    legendY += 20;
+  });
+
+  // 中心总数
+  if (total > 0) {
+    ctx.fillStyle = '#e6edf3';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(total, cx, cy + 6);
+  }
 }
 
 
@@ -10437,19 +10735,18 @@ async function loadHomeStats() {
       unknown:  '暂无数据',
     };
 
-    // 并行获取所有数据
-    const [resDashboard, resStats, resJobs, resRag] = await Promise.all([
-      fetch('/api/pro/dashboard'),
-      fetch('/api/pro/statistics'),
-      fetch('/api/scheduler/jobs'),
-      fetch('/api/rag/documents')
-    ]);
+    // 逐个获取，一个失败不影响其他
+    let dash = {}, dataStats = {}, dataJobs = {}, dataRag = {}, dataHome = {};
+    try { const r = await fetch('/api/pro/dashboard'); dash = await r.json(); } catch(e) {}
+    try { const r = await fetch('/api/pro/statistics'); dataStats = await r.json(); } catch(e) {}
+    try { const r = await fetch('/api/scheduler/jobs'); dataJobs = await r.json(); } catch(e) {}
+    try { const r = await fetch('/api/rag/documents'); dataRag = await r.json(); } catch(e) {}
+    try { const r = await fetch('/api/home_stats'); dataHome = await r.json(); } catch(e) {}
 
     // 1. 健康评分仪表盘
     const dashEl = document.getElementById('home-health-dashboard');
     if (dashEl) {
       try {
-        const dash = await resDashboard.json();
         if (dash.ok && dash.has_history) {
           const level = dash.level || 'unknown';
           const color = levelColors[level] || '#8b949e';
@@ -10510,7 +10807,6 @@ async function loadHomeStats() {
     }
 
     // 2. 处理统计数据 - 实例分布
-    const dataStats = await resStats.json();
     const dbTypeList = document.getElementById('home-db-type-list');
     if (dataStats.ok && dataStats.statistics && dbTypeList) {
       const byType = dataStats.statistics.by_type || {};
@@ -10531,7 +10827,6 @@ async function loadHomeStats() {
     }
 
     // 3. 处理定时任务
-    const dataJobs = await resJobs.json();
     const jobList = document.getElementById('home-job-list');
     const jobTotalEl = document.getElementById('home-job-total');
     const jobActiveEl = document.getElementById('home-job-active');
@@ -10562,7 +10857,6 @@ async function loadHomeStats() {
     }
 
     // 4. 处理知识库
-    const dataRag = await resRag.json();
     const kbDocsEl = document.getElementById('home-kb-docs');
     const kbChunksEl = document.getElementById('home-kb-chunks');
     if (dataRag.ok && kbDocsEl) {
@@ -10573,6 +10867,50 @@ async function loadHomeStats() {
     } else {
       if (kbDocsEl) kbDocsEl.textContent = '0';
       if (kbChunksEl) kbChunksEl.textContent = '0';
+    }
+
+    // 5. 渲染新图表（模板/巡检/基线/规则统计）
+    if (dataHome.success && dataHome.stats) {
+      const stats = dataHome.stats;
+      const dbTypeMap = {
+        'mysql': 'MySQL',
+        'pg': 'PostgreSQL',
+        'oracle': 'Oracle',
+        'dm': 'DM8',
+        'sqlserver': 'SQL Server',
+        'tidb': 'TiDB',
+        'ivorysql': 'IvorySQL',
+        'yashandb': 'YashanDB'
+      };
+
+      // 5.1 模板统计（柱状图：每个模板的章节数）
+      if (stats.template_chapters && stats.template_chapters.length > 0) {
+        console.log('template_chapters count:', stats.template_chapters.length, stats.template_chapters);
+        const labels = stats.template_chapters.map(t => t.name || '模板' + t.id);
+        const values = stats.template_chapters.map(t => t.chapters || 0);
+        requestAnimationFrame(() => drawBarChart('home-template-chart', labels, values, ['#3b82f6','#2563eb','#1d4fed','#1e40af','#1e3a8f']));
+      }
+
+      // 5.2 巡检统计（饼图：每种数据库巡检次数）
+      if (stats.inspection_by_db && Object.keys(stats.inspection_by_db).length > 0) {
+        const labels = Object.keys(stats.inspection_by_db).map(k => dbTypeMap[k] || k);
+        const values = Object.values(stats.inspection_by_db);
+        requestAnimationFrame(() => drawPieChart('home-inspection-chart', labels, values, ['#f97316','#ea580c','#dc2626','#b91c1c','#991b1b','#7f1d1d']));
+      }
+
+      // 5.3 基线统计（饼图：每种数据库基线数）
+      if (stats.baseline_by_db && Object.keys(stats.baseline_by_db).length > 0) {
+        const labels = Object.keys(stats.baseline_by_db).map(k => dbTypeMap[k] || k);
+        const values = Object.values(stats.baseline_by_db);
+        requestAnimationFrame(() => drawPieChart('home-baseline-chart', labels, values, ['#22c55e','#16a34a','#15803d','#166534','#14532d','#14451f']));
+      }
+
+      // 5.4 规则统计（饼图：每种数据库规则数）
+      if (stats.rule_engine_by_db && Object.keys(stats.rule_engine_by_db).length > 0) {
+        const labels = Object.keys(stats.rule_engine_by_db).map(k => dbTypeMap[k] || k);
+        const values = Object.values(stats.rule_engine_by_db);
+        requestAnimationFrame(() => drawPieChart('home-rule-chart', labels, values, ['#a855f7','#9333ea','#7e22ce','#6b21a8','#581c87','#3b0764']));
+      }
     }
 
     // 显示概览区域
@@ -14051,18 +14389,39 @@ document.addEventListener('keydown', function(e) {
 
     function showSlogan() {
       const s = slogans[idx];
-      elText.className = 'slogan-text anim-enter';
+
+      // 彻底重置：移除所有状态类，强制 reflow 让 transition 重新生效
+      elText.className = 'slogan-text';
       elText.textContent = '';
       elText.classList.remove('typing', 'typing-done');
       elSub.classList.remove('show');
       elSub.textContent = s.sub;
+      void elText.offsetWidth;
+
+      // 触发进入过渡（opacity 0→1, transform 切入）
+      elText.classList.add('anim-enter');
+
+      // 测量完整文字宽度，固定容器宽度防止打字时跳动
+      const measureEl = document.createElement('span');
+      measureEl.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-size:28px;font-weight:800;letter-spacing:4px;';
+      measureEl.textContent = s.text;
+      document.body.appendChild(measureEl);
+      const fullWidth = measureEl.offsetWidth;
+      document.body.removeChild(measureEl);
+      const container = elText.closest('.slogan-container');
+      if (container) {
+        container.style.width = fullWidth + 'px';
+        container.style.textAlign = 'center';
+      }
 
       // 打字机效果
       typeWriter(s.text, () => {
         elSub.classList.add('show');
         // 展示 2.5 秒后切换
         setTimeout(() => {
-          elText.className = 'slogan-text anim-leave';
+          // 触发离开过渡
+          elText.classList.remove('anim-enter');
+          elText.classList.add('anim-leave');
           elSub.classList.remove('show');
           setTimeout(() => {
             idx = (idx + 1) % slogans.length;
@@ -15109,6 +15468,58 @@ function mkdirRemote() {
       </div>
     </div>
 <script src="/static/js/baseline_config.js"></script>
+<!-- 底部状态栏 -->
+<div class="status-bar" id="status-bar">
+  <div class="sb-item">
+    <span class="sb-dot"></span>
+    <span data-i18n="webui.status_running">运行中</span>
+  </div>
+  <div class="sb-item">
+    <span>📊</span>
+    <span data-i18n="webui.status_version">版本</span>
+    <span class="sb-val">v2.5.0</span>
+  </div>
+  <div class="sb-item" id="sb-inspection">
+    <span>⏱️</span>
+    <span data-i18n="webui.status_last_inspect">上次巡检</span>
+    <span class="sb-val" id="sb-last-inspect">--</span>
+  </div>
+  <div class="sb-item">
+    <span>🕐</span>
+    <span data-i18n="webui.status_time">当前时间</span>
+    <span class="sb-val" id="sb-time">--:--:--</span>
+  </div>
+</div>
+
+</div>
+
+<script>
+(function(){
+  // 当前时间每秒刷新
+  function pad(n){ return n < 10 ? '0'+n : ''+n; }
+  function updateTime(){
+    var d = new Date();
+    var el = document.getElementById('sb-time');
+    if(el) el.textContent = d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+  }
+  updateTime();
+  setInterval(updateTime, 1000);
+
+  // 上次巡检时间（从 /api/home_stats 获取）
+  function updateLastInspect(){
+    fetch('/api/home_stats').then(r=>r.json()).then(d=>{
+      if(!d.success) return;
+      var stats = d.stats || {};
+      var total = stats.inspection_total || 0;
+      var el = document.getElementById('sb-last-inspect');
+      if(el) el.textContent = total > 0 ? '共 '+total+' 次巡检' : '暂无数据';
+    }).catch(()=>{});
+  }
+  updateLastInspect();
+  setInterval(updateLastInspect, 30000); // 每30秒刷新一次
+})();
+</script>
+
 </body>
 </html>
 

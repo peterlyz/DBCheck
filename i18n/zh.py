@@ -2441,6 +2441,10 @@ ZI = {
     "webui.home_report_desc": "规范模板，覆盖封面、配置、性能、安全等完整章节",
     "webui.home_scheduled": "定时巡检",
     "webui.home_scheduled_desc": "配置 Cron 表达式，自动执行巡检并推送报告",
+    "webui.home_inspection_stats": "巡检统计",
+    "webui.home_template_stats": "模板统计",
+    "webui.home_baseline_stats": "基线配置",
+    "webui.home_rule_stats": "规则引擎",
 
     # ── 数据库支持区 ──
     "webui.db_support_title": "支持的数据库",

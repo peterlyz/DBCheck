@@ -6210,23 +6210,24 @@ def api_home_stats():
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
 
-        # 1. 巡检次数（非Pro版 inspection.db 中的 history）
-        inspection_db = os.path.join(base_dir, 'inspection.db')
-        if os.path.exists(inspection_db):
-            conn = sqlite3.connect(inspection_db)
+        # 1. 巡检次数（Pro版 data/history.db 中的 snapshots JOIN history_instances）
+        history_db = os.path.join(base_dir, 'data', 'history.db')
+        if os.path.exists(history_db):
+            conn = sqlite3.connect(history_db)
             conn.row_factory = sqlite3.Row
             cur = conn.cursor()
             cur.execute("""
-                SELECT COUNT(*) as cnt FROM inspection_history
+                SELECT COUNT(*) as cnt FROM snapshots
             """)
             row = cur.fetchone()
             result['inspection_total'] = row['cnt'] if row else 0
 
-            # 按 db_type 统计
+            # 按 db_type 统计（snapshots 无 db_type，需 JOIN history_instances）
             cur.execute("""
-                SELECT db_type, COUNT(*) as cnt
-                FROM inspection_history
-                GROUP BY db_type
+                SELECT hi.db_type, COUNT(s.id) as cnt
+                FROM snapshots s
+                JOIN history_instances hi ON s.instance_key = hi.key
+                GROUP BY hi.db_type
             """)
             for r in cur.fetchall():
                 result['inspection_by_db'][r['db_type']] = r['cnt']
@@ -6235,13 +6236,16 @@ def api_home_stats():
         # 2. 服务器巡检次数
         server_db = os.path.join(base_dir, 'data', 'server_history.db')
         if os.path.exists(server_db):
-            conn = sqlite3.connect(server_db)
-            conn.row_factory = sqlite3.Row
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) as cnt FROM server_inspection_history")
-            row = cur.fetchone()
-            result['server_inspection_total'] = row['cnt'] if row else 0
-            conn.close()
+            try:
+                conn = sqlite3.connect(server_db)
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) as cnt FROM server_inspection_history")
+                row = cur.fetchone()
+                result['server_inspection_total'] = row['cnt'] if row else 0
+                conn.close()
+            except Exception:
+                pass
 
         # 3. 备份信息
         try:
@@ -6254,6 +6258,7 @@ def api_home_stats():
             pass
 
         # 4. 基线配置
+        inspection_db = os.path.join(base_dir, 'inspection.db')
         if os.path.exists(inspection_db):
             conn = sqlite3.connect(inspection_db)
             conn.row_factory = sqlite3.Row
@@ -6308,7 +6313,7 @@ def api_home_stats():
         except Exception:
             pass
 
-        # 8. 巡检模板
+        # 8. 巡检模板（含各模板章节数）
         if os.path.exists(inspection_db):
             conn = sqlite3.connect(inspection_db)
             conn.row_factory = sqlite3.Row
@@ -6316,7 +6321,43 @@ def api_home_stats():
             cur.execute("SELECT COUNT(*) as cnt FROM inspection_template")
             row = cur.fetchone()
             result['template_count'] = row['cnt'] if row else 0
+
+            # 各模板章节数
+            cur.execute("""
+                SELECT t.id, t.template_name_zh, t.db_type, COUNT(c.id) as chapter_count
+                FROM inspection_template t
+                LEFT JOIN inspection_chapter c ON t.id = c.template_id
+                GROUP BY t.id
+                ORDER BY t.db_type, t.id
+            """)
+            result['template_chapters'] = [
+                {'id': r['id'], 'name': r['template_name_zh'],
+                 'db_type': r['db_type'], 'chapters': r['chapter_count']}
+                for r in cur.fetchall()
+            ]
             conn.close()
+
+        # 9. 规则引擎统计
+        try:
+            from pro.rule_engine import get_rule_engine
+            engine = get_rule_engine()
+            all_rules = engine.builtin_rules + engine.custom_rules
+            result['rule_engine_total'] = len(all_rules)
+            result['rule_builtin_count'] = len(engine.builtin_rules)
+            result['rule_custom_count'] = len(engine.custom_rules)
+            # 按 db_type 统计
+            db_types = ['mysql', 'postgresql', 'pg', 'oracle', 'dm8', 'dm', 'sqlserver', 'tidb', 'ivorysql', 'yashandb']
+            rule_by_db = {}
+            for dt in db_types:
+                rules_for_db = engine.list_rules(db_type=dt)
+                if rules_for_db:
+                    rule_by_db[dt] = len(rules_for_db)
+            result['rule_engine_by_db'] = rule_by_db
+        except Exception:
+            result['rule_engine_total'] = 0
+            result['rule_builtin_count'] = 0
+            result['rule_custom_count'] = 0
+            result['rule_engine_by_db'] = {}
 
     except Exception as e:
         pass

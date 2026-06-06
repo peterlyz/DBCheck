@@ -2409,6 +2409,10 @@ EN = {
     "webui.home_report_desc": "Standardized templates covering overview, config, performance, security and more",
     "webui.home_scheduled": "Scheduled Inspection",
     "webui.home_scheduled_desc": "Configure Cron expressions, auto-execute and push reports",
+    "webui.home_inspection_stats": "Inspection Stats",
+    "webui.home_template_stats": "Template Stats",
+    "webui.home_baseline_stats": "Baseline Config",
+    "webui.home_rule_stats": "Rule Engine",
 
     # ── Database Support Section ──
     "webui.db_support_title": "Supported Databases",
