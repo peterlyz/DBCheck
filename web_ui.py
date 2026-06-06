@@ -6433,6 +6433,37 @@ def api_data_management_upgrade_check():
         return jsonify({'success': False, 'message': str(e)})
 
 
+# ─── 随机语录 API ───
+import random as _random
+
+_quotes_cache = None
+_quotes_lock = None
+
+def _load_quotes():
+    """懒加载语录库（只加载一次）"""
+    global _quotes_cache
+    if _quotes_cache is not None:
+        return _quotes_cache
+    try:
+        import json as _json
+        _quotes_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbcheck-quotes.json')
+        with open(_quotes_file, 'r', encoding='utf-8') as f:
+            data = _json.load(f)
+        _quotes_cache = data.get('quotes', [])
+    except Exception:
+        _quotes_cache = []
+    return _quotes_cache
+
+@app.route('/api/quotes/random', methods=['GET'])
+def api_random_quote():
+    """返回一条随机语录"""
+    quotes = _load_quotes()
+    if not quotes:
+        return jsonify({'ok': False, 'msg': '语录库为空'})
+    q = _random.choice(quotes)
+    return jsonify({'ok': True, 'quote': q})
+
+
 if __name__ == '__main__':
     _setup_driver_paths()
     port = 5003

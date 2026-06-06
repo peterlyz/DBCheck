@@ -2458,6 +2458,7 @@ async function executeFixSql(taskId, sql) {
   <!-- xterm.js（远程终端） -->
   <link rel="stylesheet" href="/static/css/xterm.css" />
   <link rel="stylesheet" href="/static/css/login.css">
+  <link rel="stylesheet" href="/static/css/quotes.css">
   <script src="/static/js/xterm.js"></script>
   <script src="/static/js/xterm-addon-fit.js"></script>
   <script src="/static/js/xterm-addon-attach.js"></script>
@@ -3969,6 +3970,20 @@ function formatBytes(bytes) {
             </div>
           </div>
 
+        </div>
+
+        <!-- 随机语录卡片 -->
+        <div class="quotes-card" id="quotes-card" style="margin-top:16px;">
+          <div class="quotes-inner">
+            <div class="quotes-icon">💡</div>
+            <div class="quotes-body">
+              <div class="quotes-text" id="quotes-text">加载中...</div>
+              <div class="quotes-meta">
+                <span class="quotes-category" id="quotes-category"></span>
+                <span class="quotes-refresh" onclick="refreshQuote()" title="换一条">🔄</span>
+              </div>
+            </div>
+          </div>
         </div>
 
       </div>
@@ -15458,6 +15473,85 @@ function mkdirRemote() {
 </script>
 
   <script src="/static/js/login.js"></script>
+  <script>
+    /* ─── 随机语录 ─── */
+    let _quoteTimer   = null;   // 30秒主定时器
+    let _quoteDetector = null;   // 首检测器（登录后兜底）
+
+    function refreshQuote() {
+      const textEl = document.getElementById('quotes-text');
+      const catEl  = document.getElementById('quotes-category');
+      if (!textEl) return;
+
+      textEl.classList.add('fade-out');
+
+      fetch('/api/quotes/random')
+        .then(r => r.json())
+        .then(d => {
+          if (!d.ok || !d.quote) return;
+          setTimeout(() => {
+            textEl.textContent = d.quote.content;
+            textEl.classList.remove('fade-out');
+            textEl.classList.add('anim-in');
+            if (catEl) catEl.textContent = d.quote.category;
+            setTimeout(() => textEl.classList.remove('anim-in'), 600);
+          }, 300);
+        })
+        .catch(() => {
+          textEl.classList.remove('fade-out');
+        });
+    }
+
+    /** 判断首页是否正在显示 */
+    function isHomePageVisible() {
+      const el = document.getElementById('page-home');
+      if (!el) return false;
+      return el.classList.contains('active') ||
+             window.getComputedStyle(el).display !== 'none';
+    }
+
+    /** 启动语录定时器（幂等，不会重复启动） */
+    function startQuoteTimer() {
+      if (_quoteTimer) return;                        // 已启动
+      refreshQuote();                                 // 立即加载一条
+      _quoteTimer = setInterval(refreshQuote, 5000);  // 每5秒自动换
+    }
+
+    /** 停止语录定时器 */
+    function stopQuoteTimer() {
+      if (_quoteTimer) { clearInterval(_quoteTimer); _quoteTimer = null; }
+    }
+
+    // ── 1. showPage 拦截（处理页面切换） ──
+    const _origShowPage = window.showPage;
+    window.showPage = function(pageId) {
+      if (_origShowPage) _origShowPage.apply(this, arguments);
+      if (pageId === 'page-home') {
+        startQuoteTimer();
+      } else {
+        stopQuoteTimer();
+      }
+    };
+
+    // ── 2. 首检：DOMContentLoaded 后检测，如果已在首页则启动 ──
+    document.addEventListener('DOMContentLoaded', function() {
+      if (isHomePageVisible()) {
+        startQuoteTimer();
+      }
+    });
+
+    // ── 3. 兜底：登录成功后首页显示时，检测器每2秒检查一次，最多30次 ──
+    _quoteDetector = setInterval(function() {
+      if (!isHomePageVisible()) return;
+      startQuoteTimer();
+      clearInterval(_quoteDetector);
+      _quoteDetector = null;
+    }, 2000);
+    // 1分钟后自动停止检测器（避免永久运行）
+    setTimeout(function() {
+      if (_quoteDetector) { clearInterval(_quoteDetector); _quoteDetector = null; }
+    }, 60000);
+  </script>
 </body>
 </html>
 

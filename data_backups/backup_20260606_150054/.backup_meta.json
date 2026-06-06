@@ -1,0 +1,32 @@
+{
+  "backup_time": "2026-06-06T15:00:54.592195",
+  "backup_name": "backup_20260606_150054",
+  "items": [
+    {
+      "path": "data/history.db",
+      "name": "巡检快照历史",
+      "size": 12992512
+    },
+    {
+      "path": "data/server_history.db",
+      "name": "服务器巡检历史",
+      "size": 53248
+    },
+    {
+      "path": "inspection.db",
+      "name": "巡检配置数据库",
+      "size": 5992448
+    },
+    {
+      "path": ".db_key",
+      "name": "密码加密密钥",
+      "size": 44
+    },
+    {
+      "path": "pro_data",
+      "name": "Pro版数据目录",
+      "size": 1795571
+    }
+  ],
+  "total_size": 20833823
+}
