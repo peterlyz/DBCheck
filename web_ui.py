@@ -2980,6 +2980,299 @@ def api_monitor_config():
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
 
+# ═══════════════════════════════════════════════════════════
+#  AWR 报告分析 API
+# ═══════════════════════════════════════════════════════════
+
+@app.route('/api/awr/upload', methods=['POST'])
+def api_awr_upload():
+    """上传 AWR HTML 报告并解析"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'ok': False, 'error': '未选择文件'})
+        f = request.files['file']
+        if not f.filename or f.filename == '':
+            return jsonify({'ok': False, 'error': '未选择文件'})
+        # 白名单校验
+        if not (f.filename.lower().endswith('.html') or f.filename.lower().endswith('.htm')):
+            return jsonify({'ok': False, 'error': '仅支持 .html/.htm 格式的 AWR 报告'})
+
+        import tempfile, shutil
+        awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+        os.makedirs(awr_dir, exist_ok=True)
+
+        # 保存上传文件
+        ext = '.htm' if f.filename.lower().endswith('.htm') else '.html'
+        task_id = str(uuid.uuid4())[:8]
+        saved_name = f'awr_{task_id}{ext}'
+        saved_path = os.path.join(awr_dir, saved_name)
+        f.save(saved_path)
+
+        # 校验文件大小（50MB 限制）
+        if os.path.getsize(saved_path) > 50 * 1024 * 1024:
+            os.remove(saved_path)
+            return jsonify({'ok': False, 'error': '文件大小超过 50MB 限制'})
+
+        # 解析 AWR
+        from awr_parser import parse_awr_report
+        awr_data = parse_awr_report(saved_path)
+
+        meta = awr_data.get('metadata', {})
+        # 统计解析到的章节
+        chapters_found = []
+        for key in ['load_profile', 'instance_efficiency', 'time_model', 'fg_wait_events',
+                     'system_stats', 'latch_stats', 'file_io', 'sga_memory', 'top_sql',
+                     'segment_stats', 'object_stats', 'sql_plan_changes', 'ash']:
+            val = awr_data.get(key, {})
+            has_data = False
+            if isinstance(val, dict):
+                for v in val.values():
+                    if isinstance(v, list) and v:
+                        has_data = True
+                        break
+                    if isinstance(v, dict) and v.get('rows'):
+                        has_data = True
+                        break
+            elif isinstance(val, list) and val:
+                has_data = True
+            if has_data:
+                chapters_found.append(key)
+
+        return jsonify({
+            'ok': True,
+            'task_id': task_id,
+            'filename': f.filename,
+            'metadata': meta,
+            'chapters_found': chapters_found,
+            'chapter_count': len(chapters_found),
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+def _build_awr_ai_summary(awr_data, meta):
+    """从 AWR 解析数据中构建 AI 诊断摘要"""
+    lines = []
+    lines.append(f"数据库: {meta.get('db_name', 'N/A')}, 实例: {meta.get('instance', 'N/A')}")
+    lines.append(f"快照范围: {meta.get('snap_range', 'N/A')}, 分析时段: {meta.get('elapsed', 'N/A')}")
+    lines.append(f"数据库版本: {meta.get('db_version', 'N/A')}")
+    lines.append("")
+
+    # 实例效率
+    eff = awr_data.get('instance_efficiency', [])
+    if isinstance(eff, list) and eff:
+        lines.append("=== 实例效率 ===")
+        for tdata in eff:
+            if not isinstance(tdata, dict):
+                continue
+            headers = tdata.get('headers', [])
+            rows = tdata.get('rows', [])
+            for row in rows[:10]:
+                lines.append(" | ".join(str(c) for c in row))
+        lines.append("")
+
+    # 前台等待事件
+    fg = awr_data.get('fg_wait_events', [])
+    if fg:
+        lines.append("=== 前台等待事件 Top10 ===")
+        for tdata in fg:
+            if not isinstance(tdata, dict):
+                continue
+            headers = tdata.get('headers', [])
+            rows = tdata.get('rows', [])
+            if headers:
+                lines.append(" | ".join(str(h) for h in headers))
+                for row in rows[:10]:
+                    lines.append(" | ".join(str(c) for c in row))
+        lines.append("")
+
+    # Top SQL
+    top_sql = awr_data.get('top_sql', {})
+    elapsed = top_sql.get('elapsed', [])
+    if elapsed:
+        lines.append("=== Top SQL (Elapsed Time) ===")
+        for tdata in elapsed:
+            if not isinstance(tdata, dict):
+                continue
+            headers = tdata.get('headers', [])
+            rows = tdata.get('rows', [])
+            if headers:
+                lines.append(" | ".join(str(h) for h in headers))
+                for row in rows[:5]:
+                    lines.append(" | ".join(str(c) for c in row))
+        lines.append("")
+
+    # 负载概况
+    lp = awr_data.get('load_profile', [])
+    if isinstance(lp, list) and lp:
+        lines.append("=== 负载概况 ===")
+        for tdata in lp:
+            if not isinstance(tdata, dict):
+                continue
+            headers = tdata.get('headers', [])
+            rows = tdata.get('rows', [])
+            if headers:
+                lines.append(" | ".join(str(h) for h in headers))
+                for row in rows[:5]:
+                    lines.append(" | ".join(str(c) for c in row))
+        lines.append("")
+
+    # 时间模型
+    tm = awr_data.get('time_model', [])
+    if tm:
+        lines.append("=== DB Time 模型 ===")
+        for tdata in tm:
+            if not isinstance(tdata, dict):
+                continue
+            headers = tdata.get('headers', [])
+            rows = tdata.get('rows', [])
+            if headers:
+                lines.append(" | ".join(str(h) for h in headers))
+                for row in rows[:10]:
+                    lines.append(" | ".join(str(c) for c in row))
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _awr_report_steps():
+    """AWR 报告生成步骤定义"""
+    cfg = _load_ai_config()
+    ai_backend = cfg.get('backend', 'ollama')
+    ai_on = ai_backend in ('ollama', 'openai')
+    if ai_backend == 'openai' and not cfg.get('online_enabled', False):
+        ai_on = False
+    steps = ['正在解析 AWR 数据...', '正在生成 Word 报告...', '正在打包下载文件...']
+    if ai_on:
+        steps.insert(1, 'AI 智能诊断中...')
+    return steps
+
+
+def _run_awr_report_task(report_task_id, awr_task_id):
+    """AWR 报告生成的后台工作线程"""
+    task = tasks.get(report_task_id)
+    if not task:
+        return
+    steps = task['steps']
+    awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+    import glob
+    files = glob.glob(os.path.join(awr_dir, f'awr_{awr_task_id}.*'))
+    if not files:
+        task['status'] = 'error'
+        task['error'] = 'AWR 文件不存在或已过期'
+        return
+    awr_file = files[0]
+
+    try:
+        # Step 1: 解析
+        task['current_step'] = 0
+        from awr_parser import parse_awr_report
+        awr_data = parse_awr_report(awr_file)
+
+        # Step 2: AI 诊断（如有）
+        if len(steps) > 3:
+            task['current_step'] = 1
+            try:
+                meta = awr_data.get('metadata', {})
+                ai_summary = _build_awr_ai_summary(awr_data, meta)
+                ai_prompt = (
+                    "你是一位 Oracle 数据库性能优化专家。请根据以下 AWR 报告关键指标，"
+                    "给出具体的性能优化建议（按优先级排序，每条建议包含问题描述和具体操作）：\n\n"
+                    f"{ai_summary}\n\n"
+                    "请分析以上 AWR 数据，给出优化建议："
+                )
+                ai_result = _call_llm(ai_prompt, '你是 Oracle 数据库性能调优专家，擅长通过 AWR 报告分析数据库性能问题。')
+                if ai_result and ai_result.strip():
+                    awr_data['ai_diagnosis'] = ai_result.strip()
+            except Exception:
+                pass
+
+        # Step 3: 生成 Word
+        task['current_step'] = len(steps) - 2
+        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        os.makedirs(reports_dir, exist_ok=True)
+        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+        meta = awr_data.get('metadata', {})
+        db_name = meta.get('db_name', 'awr')
+        snap = meta.get('snap_range', 'unknown')
+        report_name = f'DBCheck_AWR_Analysis_{db_name}_{snap}_{timestamp}.docx'.replace('/', '_').replace(' ', '_')
+        output_path = os.path.join(reports_dir, report_name)
+
+        from build_awr_word_report import build_awr_word_report
+        result_path = build_awr_word_report(awr_data, output_path, source_filename=os.path.basename(awr_file))
+
+        # Step 4: 完成
+        task['current_step'] = len(steps) - 1
+        task['status'] = 'done'
+        task['report_file'] = result_path
+        task['report_name'] = report_name
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        task['status'] = 'error'
+        task['error'] = str(e)
+
+
+@app.route('/api/awr/report/<awr_task_id>', methods=['POST'])
+def api_awr_generate_report(awr_task_id):
+    """启动 AWR Word 报告异步生成任务，返回 report_task_id 供轮询"""
+    try:
+        awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+        import glob
+        files = glob.glob(os.path.join(awr_dir, f'awr_{awr_task_id}.*'))
+        if not files:
+            return jsonify({'ok': False, 'error': 'AWR 文件不存在或已过期'})
+
+        report_task_id = str(uuid.uuid4())
+        steps = _awr_report_steps()
+        tasks[report_task_id] = {
+            'id': report_task_id,
+            'type': 'awr_report',
+            'status': 'running',
+            'current_step': 0,
+            'steps': steps,
+            'started_at': datetime.datetime.now().isoformat(),
+        }
+        t = threading.Thread(target=_run_awr_report_task, args=(report_task_id, awr_task_id))
+        t.daemon = True
+        t.start()
+        return jsonify({'ok': True, 'task_id': report_task_id, 'steps': steps})
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/api/awr/report_status/<report_task_id>', methods=['GET'])
+def api_awr_report_status(report_task_id):
+    """查询 AWR 报告生成进度"""
+    task = tasks.get(report_task_id)
+    if not task:
+        return jsonify({'ok': False, 'error': '任务不存在'}), 404
+    return jsonify({
+        'ok': True,
+        'status': task.get('status', 'running'),
+        'current_step': task.get('current_step', 0),
+        'steps': task.get('steps', []),
+        'report_file': task.get('report_file'),
+        'report_name': task.get('report_name'),
+        'error': task.get('error'),
+    })
+
+
+@app.route('/api/awr/status/<task_id>', methods=['GET'])
+def api_awr_status(task_id):
+    """查询 AWR 任务文件是否存在"""
+    awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+    import glob
+    files = glob.glob(os.path.join(awr_dir, f'awr_{task_id}.*'))
+    if files:
+        return jsonify({'ok': True, 'exists': True})
+    return jsonify({'ok': True, 'exists': False})
+
+
 @app.route('/api/rag/ollama-status', methods=['GET'])
 def api_rag_ollama_status():
     """向后兼容：检查当前 Embedding 后端连接状态，同时返回 backend 类型"""

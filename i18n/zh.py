@@ -2115,6 +2115,21 @@ ZI = {
     "webui.rag_embedding_ok": "Embedding 服务已连接（{}）",
     "webui.rag_embedding_fail": "Embedding 服务未连接",
 
+    # ── AWR 报告分析 ──
+    "webui.awr_nav": "AWR 报告分析",
+    "webui.awr_desc": "上传 Oracle AWR HTML 报告自动生成分析报告",
+    "webui.awr_upload_title": "上传 AWR 报告",
+    "webui.awr_upload_hint": "上传 Oracle AWR HTML 报告（由 awrrpt.sql 生成），DBCheck 将自动解析并生成分析报告",
+    "webui.awr_drop_text": "点击或拖拽 AWR HTML 文件到此处",
+    "webui.awr_parsing": "正在解析 AWR 报告...",
+    "webui.awr_parsed_title": "解析结果",
+    "webui.awr_generate_report": "📝 生成分析报告",
+    "webui.awr_upload_new": "🔄 重新上传",
+    "webui.awr_generating": "正在生成 Word 分析报告...",
+    "webui.awr_report_ready": "报告生成完成",
+    "webui.awr_download": "⬇️ 下载报告",
+    "webui.awr_analyze_new": "📊 分析新报告",
+
     # ── 定时巡检 ──
     "webui.scheduler_title": "定时巡检任务",
     "webui.scheduler_empty": "暂无定时任务，点击上方按钮创建",

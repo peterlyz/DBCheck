@@ -2997,6 +2997,191 @@ async function uploadRagDocument() {
   }
 }
 
+// ─── AWR 报告分析 ───────────────────────────────────────────
+
+let _awrTaskId = null;
+let _awrFilename = null;
+
+function awrReset() {
+  _awrTaskId = null;
+  _awrFilename = null;
+  document.getElementById('awr-parse-result').style.display = 'none';
+  document.getElementById('awr-report-progress').style.display = 'none';
+  document.getElementById('awr-report-download').style.display = 'none';
+  document.getElementById('awr-upload-progress').style.display = 'none';
+  document.getElementById('awr-file-input').value = '';
+}
+
+function awrHandleDrop(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const dz = document.getElementById('awr-drop-zone');
+  dz.style.borderColor = 'var(--border-color)';
+  dz.style.background = 'var(--surface)';
+  const files = event.dataTransfer.files;
+  if (files.length > 0) awrUploadFile(files[0]);
+}
+
+function awrHandleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) awrUploadFile(file);
+}
+
+async function awrUploadFile(file) {
+  if (!file.name.toLowerCase().endsWith('.html') && !file.name.toLowerCase().endsWith('.htm')) {
+    toastError('仅支持 .html/.htm 格式的 AWR 报告');
+    return;
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    toastError('文件大小超过 50MB 限制');
+    return;
+  }
+
+  document.getElementById('awr-upload-progress').style.display = 'block';
+  document.getElementById('awr-parse-result').style.display = 'none';
+  document.getElementById('awr-report-download').style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/awr/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    document.getElementById('awr-upload-progress').style.display = 'none';
+
+    if (!data.ok) {
+      toastError('解析失败: ' + (data.error || '未知错误'));
+      return;
+    }
+
+    _awrTaskId = data.task_id;
+    _awrFilename = data.filename;
+
+    // 渲染元数据
+    const metaDiv = document.getElementById('awr-meta-info');
+    const meta = data.metadata || {};
+    const metaItems = [
+      { label: '数据库', value: meta.db_name || 'N/A' },
+      { label: '实例', value: meta.instance || 'N/A' },
+      { label: '快照范围', value: meta.snap_range || 'N/A' },
+      { label: '分析时段', value: meta.elapsed || 'N/A' },
+      { label: '数据库版本', value: meta.db_version || 'N/A' },
+      { label: 'RAC', value: meta.rac || 'N/A' },
+    ];
+    metaDiv.innerHTML = metaItems.map(m =>
+      `<div style="background:var(--surface);padding:10px 14px;border-radius:8px">
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${m.label}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--text)">${m.value}</div>
+       </div>`
+    ).join('');
+
+    // 章节摘要
+    const chapterSummary = document.getElementById('awr-chapter-summary');
+    chapterSummary.textContent = `已解析 ${data.chapter_count} 个数据章节`;
+
+    document.getElementById('awr-parse-result').style.display = 'block';
+    toastSuccess('AWR 报告解析完成');
+  } catch(e) {
+    document.getElementById('awr-upload-progress').style.display = 'none';
+    toastError('上传失败: ' + e.message);
+  }
+}
+
+async function awrGenerateReport() {
+  if (!_awrTaskId) {
+    toastError('未解析到 AWR 数据');
+    return;
+  }
+
+  document.getElementById('awr-report-progress').style.display = 'block';
+  document.getElementById('awr-report-download').style.display = 'none';
+
+  try {
+    // 启动异步报告生成任务
+    const res = await fetch('/api/awr/report/' + _awrTaskId, { method: 'POST' });
+    const data = await res.json();
+
+    if (!data.ok) {
+      document.getElementById('awr-report-progress').style.display = 'none';
+      toastError('报告生成失败: ' + (data.error || '未知错误'));
+      return;
+    }
+
+    const reportTaskId = data.task_id;
+    const steps = data.steps || [];
+
+    // 渲染分步进度条
+    _awrRenderProgress(steps, 0);
+
+    // 轮询进度
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusRes = await fetch('/api/awr/report_status/' + reportTaskId);
+        const statusData = await statusRes.json();
+
+        if (!statusData.ok) return;
+
+        _awrRenderProgress(steps, statusData.current_step);
+
+        if (statusData.status === 'done') {
+          clearInterval(pollInterval);
+          document.getElementById('awr-report-progress').style.display = 'none';
+
+          const infoDiv = document.getElementById('awr-report-info');
+          infoDiv.innerHTML = `<div style="font-size:13px;color:var(--text)">报告文件: <strong>${statusData.report_name}</strong></div>`;
+
+          const dlBtn = document.getElementById('awr-download-btn');
+          dlBtn.onclick = function() {
+            window.open('/api/download_file?path=' + encodeURIComponent(statusData.report_file), '_blank');
+          };
+
+          document.getElementById('awr-report-download').style.display = 'block';
+          toastSuccess('分析报告生成完成');
+        } else if (statusData.status === 'error') {
+          clearInterval(pollInterval);
+          document.getElementById('awr-report-progress').style.display = 'none';
+          toastError('报告生成失败: ' + (statusData.error || '未知错误'));
+        }
+      } catch(e) {
+        clearInterval(pollInterval);
+        document.getElementById('awr-report-progress').style.display = 'none';
+        toastError('查询进度失败: ' + e.message);
+      }
+    }, 1500);
+  } catch(e) {
+    document.getElementById('awr-report-progress').style.display = 'none';
+    toastError('报告生成失败: ' + e.message);
+  }
+}
+
+// AWR 报告分步进度渲染
+function _awrRenderProgress(steps, currentStep) {
+  const container = document.getElementById('awr-progress-steps');
+  if (!container || !steps.length) return;
+
+  let html = '';
+  steps.forEach((step, i) => {
+    let icon = '○';
+    let cls = 'color:var(--text-muted)';
+    if (i < currentStep) {
+      icon = '✅';
+      cls = 'color:var(--success)';
+    } else if (i === currentStep) {
+      icon = '🔄';
+      cls = 'color:var(--primary)';
+    }
+    html += `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;${cls};font-size:13px">`;
+    html += `<span style="min-width:50px">${icon} ${i + 1}/${steps.length}</span>`;
+    html += `<span>${step}</span>`;
+    html += '</div>';
+    if (i < steps.length - 1) {
+      html += '<div style="height:1px;background:var(--border);margin:0 0 0 56px"></div>';
+    }
+  });
+  container.innerHTML = html;
+}
+
 // ─── 一键修复建议功能 ───────────────────────────────────────
 
 function copyFixSql(sql) {
@@ -3783,6 +3968,9 @@ function formatBytes(bytes) {
     </div>
     <div class="nav-item" onclick="showPage('scheduler')" id="nav-scheduler">
       <span class="icon">⏰</span> <span data-i18n="webui.nav_scheduler">定时巡检</span>
+    </div>
+    <div class="nav-item" onclick="showPage('awr')" id="nav-awr">
+      <span class="icon">📊</span> <span data-i18n="webui.awr_nav">AWR 报告分析</span>
     </div>
 
     <!-- ── 巡检历史 ── -->
@@ -5897,6 +6085,70 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
         </div>
       </div>
 
+      <!-- AWR 报告分析页面 -->
+      <div class="page" id="page-awr" style="display:none;">
+        <div class="page-content" id="awr-content">
+
+          <!-- 上传区域 -->
+          <div class="card">
+            <div class="card-title"><span>📊</span> <span data-i18n="webui.awr_upload_title">上传 AWR 报告</span></div>
+            <p style="font-size:13px;color:var(--text-muted);margin-bottom:16px;" data-i18n="webui.awr_upload_hint">
+              上传 Oracle AWR HTML 报告（由 awrrpt.sql 生成），DBCheck 将自动解析并生成分析报告
+            </p>
+            <div id="awr-drop-zone" style="border:2px dashed var(--border-color);border-radius:10px;padding:48px 24px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface);margin-bottom:16px"
+                 ondragover="event.preventDefault();this.style.borderColor='var(--accent)';this.style.background='var(--card)'"
+                 ondragleave="this.style.borderColor='var(--border-color)';this.style.background='var(--surface)'"
+                 ondrop="awrHandleDrop(event)"
+                 onclick="document.getElementById('awr-file-input').click()">
+              <div style="font-size:36px;margin-bottom:12px">📄</div>
+              <div style="font-size:14px;color:var(--text)" data-i18n="webui.awr_drop_text">点击或拖拽 AWR HTML 文件到此处</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:8px">支持 .html / .htm，最大 50MB</div>
+              <input type="file" id="awr-file-input" accept=".html,.htm" style="display:none" onchange="awrHandleFileSelect(event)">
+            </div>
+            <!-- 上传进度 -->
+            <div id="awr-upload-progress" style="display:none;margin-bottom:12px">
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font-size:13px" data-i18n="webui.awr_parsing">正在解析 AWR 报告...</span>
+                <span class="loading-spinner" style="width:16px;height:16px"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 解析结果 -->
+          <div id="awr-parse-result" style="display:none;">
+            <div class="card">
+              <div class="card-title"><span>✅</span> <span data-i18n="webui.awr_parsed_title">解析结果</span></div>
+              <div id="awr-meta-info" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:16px"></div>
+              <div style="font-size:13px;color:var(--text-muted);margin-bottom:12px" id="awr-chapter-summary"></div>
+              <div style="display:flex;gap:10px">
+                <button class="btn btn-primary" onclick="awrGenerateReport()" data-i18n="webui.awr_generate_report">📝 生成分析报告</button>
+                <button class="btn btn-ghost" onclick="awrReset()" data-i18n="webui.awr_upload_new">🔄 重新上传</button>
+              </div>
+            </div>
+
+            <!-- 报告生成进度 -->
+            <div id="awr-report-progress" style="display:none;margin-top:16px">
+              <div class="card">
+                <div id="awr-progress-steps"></div>
+              </div>
+            </div>
+
+            <!-- 报告下载 -->
+            <div id="awr-report-download" style="display:none;margin-top:16px">
+              <div class="card">
+                <div class="card-title"><span>📥</span> <span data-i18n="webui.awr_report_ready">报告生成完成</span></div>
+                <div id="awr-report-info" style="margin-bottom:12px"></div>
+                <div style="display:flex;gap:10px">
+                  <button class="btn btn-primary" id="awr-download-btn" data-i18n="webui.awr_download">⬇️ 下载报告</button>
+                  <button class="btn btn-ghost" onclick="awrReset()" data-i18n="webui.awr_analyze_new">📊 分析新报告</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /app-shell -->
@@ -6026,9 +6278,10 @@ function applyI18N() {
     }
   }
 
-  // 应用 data-i18n 属性的元素
+  // 应用 data-i18n 属性的元素（跳过步骤 badge，由 gotoStep 负责格式化）
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.getAttribute('data-i18n');
+    if (key === 'webui.step_badge') return;  // 由 gotoStep() 负责带参数格式化
     if (el.tagName === 'INPUT' && el.hasAttribute('placeholder')) {
       el.placeholder = i18n(key);
     } else {
@@ -6159,6 +6412,7 @@ function showPage(name) {
     'monitor-slow': [i18n('monitor.slow_title') || '实时慢查询', i18n('monitor.slow_desc') || '定时拉取各数据源 Top SQL'],
     'monitor-conn': [i18n('monitor.conn_title') || '活跃连接监控', i18n('monitor.conn_desc') || '实时查看各数据源连接数'],
     'data-management': [i18n('webui.data_management_title') || '数据管理', i18n('webui.data_management_desc') || '管理 DBCheck 自身数据文件'],
+    'awr': [i18n('webui.awr_nav') || 'AWR 报告分析', i18n('webui.awr_desc') || '上传 Oracle AWR HTML 报告自动生成分析报告'],
   };
   const t = titles[name] || [name, ''];
   document.getElementById('topbar-title').textContent = t[0];
