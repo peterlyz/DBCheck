@@ -38,3 +38,4 @@ mysql_inspector.lic
 pro_data/
 # Driver binaries (download from GitHub Releases, too large for Git)
 drivers/
+awr_uploads/

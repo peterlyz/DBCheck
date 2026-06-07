@@ -22,14 +22,12 @@ try:
 except ImportError:
     _HAS_DOCX = False
 
-
 # ── 辅助函数 ──────────────────────────────────────────────────────────────
 
 def _set_cell_bg(cell, hex_color):
     """设置单元格背景色"""
     shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{hex_color}"/>')
     cell._tc.get_or_add_tcPr().append(shading)
-
 
 def _docx_table(doc, headers, rows, header_bg='336699', max_rows=100):
     """生成 Word 表格（带表头背景色），最多渲染 max_rows 行"""
@@ -70,7 +68,6 @@ def _docx_table(doc, headers, rows, header_bg='336699', max_rows=100):
             run.font.italic = True
     return tbl
 
-
 def _add_heading(doc, text, level=1, color=None, size=None):
     """添加带样式的标题"""
     h = doc.add_heading(text, level=level)
@@ -80,7 +77,6 @@ def _add_heading(doc, text, level=1, color=None, size=None):
         if size:
             run.font.size = size
     return h
-
 
 def _add_text(doc, text, size=None, color=None, bold=False):
     """添加普通文本段落"""
@@ -92,7 +88,6 @@ def _add_text(doc, text, size=None, color=None, bold=False):
     if bold:
         run.bold = True
     return p
-
 
 # ── 章节渲染函数 ──────────────────────────────────────────────────────────
 
@@ -155,7 +150,6 @@ def _render_cover(doc, awr_data):
 
     doc.add_page_break()
 
-
 def _render_table_data(doc, tables_list, subtitle=''):
     """渲染一个或多个表格数据"""
     if not tables_list:
@@ -178,7 +172,6 @@ def _render_table_data(doc, tables_list, subtitle=''):
             _docx_table(doc, headers, rows)
             doc.add_paragraph()
 
-
 def _render_kv_pairs(doc, tables_list):
     """渲染键值对表格"""
     for tdata in tables_list:
@@ -188,7 +181,6 @@ def _render_kv_pairs(doc, tables_list):
             _docx_table(doc, headers, rows)
             doc.add_paragraph()
 
-
 # ── 诊断分析函数 ──────────────────────────────────────────────────────────
 
 def _parse_float(s):
@@ -197,7 +189,6 @@ def _parse_float(s):
         return float(str(s).replace(',', '').replace('%', '').strip())
     except (ValueError, TypeError):
         return None
-
 
 def _diagnose_wait_events(doc, awr_data):
     """分析等待事件，生成诊断"""
@@ -263,7 +254,6 @@ def _diagnose_wait_events(doc, awr_data):
 
     return diagnostics
 
-
 def _wait_event_advice(event_name, pct, wait_class):
     """根据等待事件名称返回诊断建议"""
     en = event_name.lower()
@@ -304,7 +294,6 @@ def _wait_event_advice(event_name, pct, wait_class):
         return ('中', f'等待事件 {event_name} 占比 {pct}%（类别: {wait_class}），需要关注')
 
     return None
-
 
 def _diagnose_sql_performance(doc, awr_data):
     """分析 Top SQL 性能"""
@@ -365,7 +354,6 @@ def _diagnose_sql_performance(doc, awr_data):
 
     return diagnostics
 
-
 def _diagnose_io(doc, awr_data):
     """分析 I/O 性能"""
     diagnostics = []
@@ -395,56 +383,205 @@ def _diagnose_io(doc, awr_data):
 
     return diagnostics
 
+def _preprocess_ai_markdown(text):
+    """预处理 AI 生成的 Markdown 文本，返回清理后的标准 Markdown。
+
+    处理规则：
+    1. 删除整行 **xxx**（无数字编号，如 **Oracle数据库性能优化建议（按优先级排序）**）
+    2. **N. xxx** → ## 16.N xxx（二级标题，自动编号）
+    3. 其他行内 **xxx** → 去掉 ** 标记
+    4. 合并连续空行
+    5. 去掉末尾多余空行
+    """
+    lines = text.split('\n')
+    result = []
+    heading_counter = 0
+    prev_blank = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # 规则4：跳过空行（合并连续空行）
+        if not stripped:
+            if not prev_blank and result:
+                result.append('')
+                prev_blank = True
+            continue
+        prev_blank = False
+
+        # 规则1+2：检查是否整行 **xxx**
+        if stripped.startswith('**') and stripped.endswith('**'):
+            inner = stripped[2:-2].strip()
+            # 提取开头的数字（支持 1. 或 1、）
+            num_str = ''
+            title_start = 0
+            for j, ch in enumerate(inner):
+                if ch.isdigit():
+                    num_str += ch
+                elif ch in '.、':
+                    title_start = j + 1
+                    break
+                else:
+                    break
+            if num_str:
+                # 有数字编号 → 规则2：转换成 ## N. xxx（二级标题，自动编号）
+                heading_counter += 1
+                title = inner[title_start:].strip()
+                result.append(f'## {heading_counter}. {title}')
+                continue
+            else:
+                # 无数字编号
+                # 子标题关键词（应保留并转成 ### xxx，三级标题）
+                sub_keywords = ['问题描述', '具体操作', '根因分析', '影响范围',
+                                '解决方案', '建议措施', '优化步骤', '执行步骤']
+                is_sub_heading = any(kw in inner for kw in sub_keywords)
+                # 纯总标题关键词（应删除）
+                generic_keywords = ['优化建议', '性能优化', '优化方案',
+                                    '诊断建议', '性能建议', '优化措施']
+                is_generic_title = any(kw in inner for kw in generic_keywords)
+                if is_generic_title and not is_sub_heading:
+                    continue
+                # 子标题 → 转成 ### xxx（三级标题）
+                if is_sub_heading:
+                    result.append(f'### {inner}')
+                else:
+                    # 其他无编号标题 → 转成 ## xxx（二级标题）
+                    result.append(f'## {inner}')
+                continue
+
+        # 规则3：去掉行内 ** 标记
+        cleaned = stripped.replace('**', '')
+        result.append(cleaned)
+
+    # 规则5：去掉末尾空行
+    while result and not result[-1].strip():
+        result.pop()
+
+    return '\n'.join(result)
 
 def _render_markdown_to_word(doc, md_text):
-    """将简化 Markdown 文本渲染为 Word 段落。
+    """将标准 Markdown 文本渲染为 Word 段落。
 
-    支持: # 标题、**加粗**、*斜体*、- / 1. 列表项、`代码`、空行分段
+    只处理标准 Markdown（# ## ### 标题、有序/无序列表、
+    引用、代码块、行内 **bold** *italic* `code`）。
+    ** 整行标题由 _preprocess_ai_markdown() 预处理转换，此处不再处理。
     """
     lines = md_text.split('\n')
     in_list = False
-
+    in_code_block = False
     i = 0
+
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
 
-        # 空行 → 段落间距
-        if not stripped:
-            if in_list:
-                in_list = False
+        # 代码块 ``` 开关
+        if stripped.startswith('```'):
+            if in_code_block:
+                in_code_block = False
                 doc.add_paragraph()
             else:
+                in_code_block = True
+                in_list = False
                 doc.add_paragraph()
             i += 1
             continue
 
+        # 代码块内内容
+        if in_code_block:
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.left_indent = Pt(24)
+            run = p.add_run(stripped)
+            run.font.size = Pt(9.5)
+            run.font.name = 'Consolas'
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            i += 1
+            continue
+
+        # 引用块 > xxx
+        if stripped.startswith('>'):
+            if in_list:
+                in_list = False
+                doc.add_paragraph()
+            quote_text = re.sub(r'^>\s*', '', stripped)
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(2)
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.left_indent = Pt(24)
+            p.paragraph_format.right_indent = Pt(12)
+            _add_inline_runs(p, quote_text)
+            if p.runs:
+                p.runs[0].italic = True
+                p.runs[0].font.color.rgb = RGBColor(128, 128, 128)
+            i += 1
+            continue
+
+        # 表格行 | col1 | col2 |
+        if stripped.startswith('|') and stripped.endswith('|'):
+            if in_list:
+                in_list = False
+                doc.add_paragraph()
+            is_separator = all(re.match(r'^[\s\-:|]+$', c) for c in stripped.split('|')[1:-1])
+            if is_separator:
+                i += 1
+                continue
+            cells = [c.strip() for c in stripped.split('|')[1:-1] if c.strip()]
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after = Pt(1)
+            p.paragraph_format.left_indent = Pt(12)
+            _add_inline_runs(p, '  |  '.join(cells))
+            i += 1
+            continue
+
+        # 分割线 ---
+        if re.match(r'^(---+|___+|\*\*\*+)\s*$', stripped):
+            if in_list:
+                in_list = False
+                doc.add_paragraph()
+            doc.add_paragraph()
+            i += 1
+            continue
+
+        # 空行 → 合并连续空行
+        if not stripped:
+            if in_list:
+                in_list = False
+                doc.add_paragraph()
+            j = i + 1
+            while j < len(lines) and not lines[j].strip():
+                j += 1
+            if j < len(lines):
+                next_line = lines[j].strip()
+                # 如果下一段是标题，不添加空段落（标题自带间距）
+                is_next_heading = bool(re.match(r'^(#{1,4})\s+', next_line))
+                if not is_next_heading:
+                    doc.add_paragraph()
+            i = j
+            continue
+
         # 标题 # ## ###
-        heading_match = re.match(r'^(#{1,3})\s+(.*)', stripped)
+        heading_match = re.match(r'^(#{1,4})\s+(.*)', stripped)
         if heading_match:
+            if in_list:
+                in_list = False
+                doc.add_paragraph()
             level = len(heading_match.group(1))
             title_text = heading_match.group(2).strip()
-            sizes = {1: Pt(14), 2: Pt(12), 3: Pt(11)}
+            sizes = {1: Pt(14), 2: Pt(12), 3: Pt(11), 4: Pt(11)}
             p = doc.add_paragraph()
-            p.paragraph_format.space_before = Pt(6)
-            p.paragraph_format.space_after = Pt(4)
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(2)
             run = p.add_run(title_text)
             run.font.size = sizes.get(level, Pt(11))
             run.bold = True
             run.font.color.rgb = RGBColor(0, 51, 102)
             i += 1
-            continue
-
-        # 列表项（- / * / 1. / •）
-        list_match = re.match(r'^[-*•]?\s*(\d+\.)?\s+(.*)', stripped)
-        if list_match or stripped.startswith('- ') or stripped.startswith('* ') or stripped.startswith('• '):
-            item_text = stripped.lstrip('-*• ').lstrip('0123456789. ')
-            p = doc.add_paragraph(style='List Bullet')
-            p.paragraph_format.space_before = Pt(1)
-            p.paragraph_format.space_after = Pt(1)
-            _add_inline_runs(p, item_text)
-            in_list = True
-            i += 1
+            # 跳过紧跟的空行（标题自带间距，不需要额外空段落）
+            while i < len(lines) and not lines[i].strip():
+                i += 1
             continue
 
         # 有序列表 1. xxx
@@ -463,6 +600,18 @@ def _render_markdown_to_word(doc, md_text):
             i += 1
             continue
 
+        # 无序列表 - * •
+        ul_match = re.match(r'^[-*•]\s+(.*)', stripped)
+        if ul_match:
+            item_text = ul_match.group(1)
+            p = doc.add_paragraph(style='List Bullet')
+            p.paragraph_format.space_before = Pt(1)
+            p.paragraph_format.space_after = Pt(1)
+            _add_inline_runs(p, item_text)
+            in_list = True
+            i += 1
+            continue
+
         # 普通段落
         if in_list:
             in_list = False
@@ -476,32 +625,63 @@ def _render_markdown_to_word(doc, md_text):
 
 def _add_inline_runs(p, text):
     """在段落中渲染行内 Markdown：加粗、斜体、代码"""
-    # 简单状态机：按特殊标记分割
-    # 支持: **bold** *italic* `code`
-    parts = re.split(r'(\*\*.+?\*\*|\*[^*]+\*|`[^`]+`)', text)
-    for part in parts:
-        if not part:
-            continue
-        # 加粗
-        if part.startswith('**') and part.endswith('**'):
-            run = p.add_run(part[2:-2])
+    markers = []
+
+    # 1) 收集 **bold** 的位置
+    for m in re.finditer(r'\*\*([^*]+)\*\*', text):
+        markers.append((m.start(), m.end(), 'bold', m.group(1)))
+    # __bold__
+    for m in re.finditer(r'__([^_]+)__', text):
+        markers.append((m.start(), m.end(), 'bold', m.group(1)))
+
+    # 2) 收集 *italic*（排除已在 **/__ 内部的）
+    bold_ranges = [(m.start(), m.end()) for m in re.finditer(r'\*\*[^*]+\*\*|__[^_]+__', text)]
+    for m in re.finditer(r'(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)', text):
+        if not any(s <= m.start() < e for s, e in bold_ranges):
+            markers.append((m.start(), m.end(), 'italic', m.group(1)))
+    for m in re.finditer(r'(?<!_)_(?!_)([^_]+)(?<!_)_(?!_)', text):
+        if not any(s <= m.start() < e for s, e in bold_ranges):
+            markers.append((m.start(), m.end(), 'italic', m.group(1)))
+
+    # 3) 收集 `code`
+    for m in re.finditer(r'`([^`]+)`', text):
+        markers.append((m.start(), m.end(), 'code', m.group(1)))
+
+    if not markers:
+        run = p.add_run(text)
+        run.font.size = Pt(10.5)
+        return
+
+    # 按起始位置排序，去除重叠（保留先出现的）
+    markers.sort(key=lambda x: x[0])
+    filtered = []
+    last_end = -1
+    for start, end, style, content in markers:
+        if start >= last_end:
+            filtered.append((start, end, style, content))
+            last_end = end
+
+    # 按区间渲染
+    pos = 0
+    for start, end, style, content in filtered:
+        if pos < start:
+            run = p.add_run(text[pos:start])
             run.font.size = Pt(10.5)
+        run = p.add_run(content)
+        run.font.size = Pt(10.5)
+        if style == 'bold':
             run.bold = True
-        # 斜体
-        elif part.startswith('*') and part.endswith('*'):
-            run = p.add_run(part[1:-1])
-            run.font.size = Pt(10.5)
+        elif style == 'italic':
             run.italic = True
-        # 行内代码
-        elif part.startswith('`') and part.endswith('`'):
-            run = p.add_run(part[1:-1])
+        elif style == 'code':
             run.font.size = Pt(10)
             run.font.name = 'Consolas'
             run.font.color.rgb = RGBColor(139, 0, 0)
-        else:
-            run = p.add_run(part)
-            run.font.size = Pt(10.5)
+        pos = end
 
+    if pos < len(text):
+        run = p.add_run(text[pos:])
+        run.font.size = Pt(10.5)
 
 def _diagnose_cache(doc, awr_data):
     """分析缓存命中率"""
@@ -544,7 +724,6 @@ def _diagnose_cache(doc, awr_data):
                                 diagnostics.append(('中', f'Buffer Cache 命中率 {val:.1f}%，低于90%建议增加 db_cache_size'))
 
     return diagnostics
-
 
 # ── 主报告生成函数 ────────────────────────────────────────────────────────
 
@@ -774,7 +953,6 @@ def build_awr_word_report(awr_data: Dict[str, Any], output_path: str = None, sou
     # ═══════════════════════════════════════════════════════════════════
     # 诊断分析总结（DBCheck 自动生成）
     # ═══════════════════════════════════════════════════════════════════
-    doc.add_page_break()
     _add_section('DBCheck AWR 诊断分析')
 
     _add_text(doc, '以下诊断由 DBCheck 基于 AWR 数据自动生成，仅供参考。', size=Pt(10.5), color=RGBColor(128, 128, 128))
@@ -815,14 +993,13 @@ def build_awr_word_report(awr_data: Dict[str, Any], output_path: str = None, sou
     # ═══════════════════════════════════════════════════════════════════
     ai_result = awr_data.get('ai_diagnosis', '')
     if ai_result and ai_result.strip():
-        doc.add_page_break()
         _add_section('AI 智能诊断建议')
-        _add_text(doc, '以下建议由 AI 基于 AWR 数据自动生成，仅供参考，请结合实际业务场景判断。',
+        _add_text(doc, '以下建议由 AI 基于 AWR 数据自动生成，仅供参考，请结合实际业务场景判断.',
                   size=Pt(10), color=RGBColor(128, 128, 128))
-        doc.add_paragraph()
 
-        # 将 Markdown 格式 AI 建议渲染为 Word 段落
-        _render_markdown_to_word(doc, ai_result.strip())
+        # 预处理：去掉不需要的行、转换 **N. xxx** 为 ## 标题、清理空行
+        cleaned = _preprocess_ai_markdown(ai_result.strip())
+        _render_markdown_to_word(doc, cleaned)
 
     doc.add_paragraph()
     _add_text(doc, f'报告由 DBCheck 自动生成 | 生成时间: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
@@ -831,7 +1008,6 @@ def build_awr_word_report(awr_data: Dict[str, Any], output_path: str = None, sou
     # 保存
     doc.save(output_path)
     return os.path.abspath(output_path)
-
 
 if __name__ == '__main__':
     import sys
