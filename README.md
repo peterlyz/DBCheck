@@ -23,53 +23,6 @@ DBCheck is an open-source, cross-platform automated database health check tool t
 
 ---
 
-## 🌍 Multi-Language Support
-
-DBCheck supports **Chinese (default)** and **English**. All interface text updates automatically when you switch languages.
-
-### CLI Language Switch
-
-```bash
-python main.py                    # Default: Chinese
-python main.py --lang en         # Switch to English
-python main.py --lang zh         # Switch to Chinese (explicit)
-```
-
-> The Web UI also has a 🌐 toggle button in the top-right corner. Clicking it switches between Chinese and English. The setting is automatically saved and will be loaded on the next Web UI startup.
-
-### Language Reference
-
-| Parameter | Language | Notes |
-|-----------|----------|-------|
-| `--lang zh` | Chinese | Default language |
-| `--lang en` | English | English interface |
-| (not specified) | Chinese | Uses the last saved language; falls back to Chinese if no record exists |
-
-> **Note**: The `--lang` parameter only takes effect for the current session and does not overwrite any saved language setting. Switching language in the Web UI persists to `dbc_config.json` and loads automatically on the next startup.
-
-### Manually Modify Default Language
-
-To change the default language without using CLI flags or Web UI, edit the configuration file directly:
-
-```json
-// dbc_config.json
-{
-    "language": "zh"   // "zh" = Chinese, "en" = English
-}
-```
-
-The config file is located in the same directory as `main.py`.
-
-## 🌓 Theme Switching
-
-DBCheck Web UI supports both **dark** and **light** themes. Click the ☀️/🌙 button in the top bar to toggle instantly — the preference is saved to your browser and restored automatically on next visit.
-
-| Feature | Description |
-|---------|-------------|
-| Default Theme | Dark (GitHub-style color palette) |
-| Light Theme | High-contrast light variant for bright environments |
-| Persistence | Stored in browser `localStorage`, survives page refresh |
-| Zero Config | No CLI flags or config file changes needed |
 
 ## AI-Assisted - Detect and Resolve Issues
 
@@ -304,6 +257,57 @@ http://localhost:5003/share/{share_id}
 | `/api/share/<share_id>` | GET | Get share data |
 | `/api/share/<share_id>` | DELETE | Delete share link |
 | `/api/shares` | GET | Get all share list |
+
+---
+
+
+## 🌍 Multi-Language Support
+
+DBCheck supports **Chinese (default)** and **English**. All interface text updates automatically when you switch languages.
+
+### CLI Language Switch
+
+```bash
+python main.py                    # Default: Chinese
+python main.py --lang en         # Switch to English
+python main.py --lang zh         # Switch to Chinese (explicit)
+```
+
+> The Web UI also has a 🌐 toggle button in the top-right corner. Clicking it switches between Chinese and English. The setting is automatically saved and will be loaded on the next Web UI startup.
+
+### Language Reference
+
+| Parameter | Language | Notes |
+|-----------|----------|-------|
+| `--lang zh` | Chinese | Default language |
+| `--lang en` | English | English interface |
+| (not specified) | Chinese | Uses the last saved language; falls back to Chinese if no record exists |
+
+> **Note**: The `--lang` parameter only takes effect for the current session and does not overwrite any saved language setting. Switching language in the Web UI persists to `dbc_config.json` and loads automatically on the next startup.
+
+### Manually Modify Default Language
+
+To change the default language without using CLI flags or Web UI, edit the configuration file directly:
+
+```json
+// dbc_config.json
+{
+    "language": "zh"   // "zh" = Chinese, "en" = English
+}
+```
+
+The config file is located in the same directory as `main.py`.
+
+## 🌓 Theme Switching
+
+DBCheck Web UI supports both **dark** and **light** themes. Click the ☀️/🌙 button in the top bar to toggle instantly — the preference is saved to your browser and restored automatically on next visit.
+
+| Feature | Description |
+|---------|-------------|
+| Default Theme | Dark (GitHub-style color palette) |
+| Light Theme | High-contrast light variant for bright environments |
+| Persistence | Stored in browser `localStorage`, survives page refresh |
+| Zero Config | No CLI flags or config file changes needed |
 
 ---
 
