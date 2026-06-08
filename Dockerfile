@@ -49,10 +49,10 @@ RUN python -m venv /opt/venv \
 RUN /opt/venv/bin/pip install --no-cache-dir dmpython>=1.0.0 \
     || echo "WARNING: dmpython installation failed (DM8 support disabled)."
 
-# YashanDB wheel: downloaded at runtime via the "Database Client Settings" page.
-# If pre-install is desired, uncomment and ensure .dockerignore does not exclude drivers/
-# COPY drivers/yashandb/yasdb-1.2.0-py3-none-any.whl ./
-# RUN /opt/venv/bin/pip install --no-cache-dir yasdb-1.2.0-py3-none-any.whl || true
+# YashanDB wheel: install from drivers/ directory
+COPY drivers/yashandb/yasdb-1.2.0-py3-none-any.whl ./
+RUN /opt/venv/bin/pip install --no-cache-dir yasdb-1.2.0-py3-none-any.whl \
+    || echo "WARNING: yasdb installation failed (YashanDB support disabled)."
 
 # Copy application code
 COPY . .
