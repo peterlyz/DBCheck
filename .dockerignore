@@ -8,8 +8,6 @@ __pycache__/
 *.pyd
 .Python
 *.so
-# Keep drivers/ .so files (Oracle client libs needed at runtime)
-!drivers/**/*.so
 *.egg-info/
 dist/
 build/
@@ -64,8 +62,8 @@ secrets/
 *.key
 *.crt
 
-# Large binaries (all drivers — app downloads them at runtime)
-# drivers/ — COMMENTED OUT: drivers/ is now copied into the Docker image at build time
+# Large binaries (all drivers — downloaded at build time from GitHub Releases)
+drivers/
 
 # Documentation (optional, keep if you want docs in image)
 # *.md

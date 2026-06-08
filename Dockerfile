@@ -49,10 +49,21 @@ RUN python -m venv /opt/venv \
 RUN /opt/venv/bin/pip install --no-cache-dir dmpython>=1.0.0 \
     || echo "WARNING: dmpython installation failed (DM8 support disabled)."
 
-# YashanDB wheel: install from drivers/ directory
-COPY drivers/yashandb/yasdb-1.2.0-py3-none-any.whl ./
-RUN /opt/venv/bin/pip install --no-cache-dir yasdb-1.2.0-py3-none-any.whl \
-    || echo "WARNING: yasdb installation failed (YashanDB support disabled)."
+# Download and extract drivers.zip from GitHub Releases (non-fatal)
+# Provides: Oracle client libs, YashanDB wheel, etc.
+# If download fails, related DB types will be disabled at runtime.
+RUN curl -fSL "https://github.com/fiyo/DBCheck/releases/download/drivers/drivers.zip" \
+    -o /tmp/drivers.zip \
+    && unzip -o /tmp/drivers.zip -d /build/drivers/ \
+    && rm -f /tmp/drivers.zip \
+    || echo "WARNING: drivers.zip download failed (Oracle/YashanDB drivers not included)."
+
+# Install YashanDB wheel (if downloaded successfully)
+RUN if [ -f /build/drivers/yashandb/yasdb-1.2.0-py3-none-any.whl ]; then \
+        /opt/venv/bin/pip install --no-cache-dir /build/drivers/yashandb/yasdb-1.2.0-py3-none-any.whl; \
+    else \
+        echo "WARNING: yasdb wheel not found, YashanDB support disabled"; \
+    fi
 
 # Copy application code
 COPY . .
