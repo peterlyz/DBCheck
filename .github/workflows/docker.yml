@@ -118,7 +118,7 @@ jobs:
             ### Docker Hub
             ```bash
             docker pull ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version_num }}
-            docker run -d -p 5000:5000 \
+            docker run -d -p 5003:5003 \
               -v dbcheck_data:/app/data \
               -v dbcheck_reports:/app/reports \
               ${{ env.DOCKER_IMAGE }}:${{ steps.version.outputs.version_num }}
@@ -127,7 +127,7 @@ jobs:
             ### GitHub Container Registry (China-friendly)
             ```bash
             docker pull ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.version_num }}
-            docker run -d -p 5000:5000 \
+            docker run -d -p 5003:5003 \
               -v dbcheck_data:/app/data \
               -v dbcheck_reports:/app/reports \
               ${{ env.GHCR_IMAGE }}:${{ steps.version.outputs.version_num }}

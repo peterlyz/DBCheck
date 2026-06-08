@@ -38,31 +38,16 @@ WORKDIR /build
 # pyodbc is installed via pip; the actual ODBC driver (msodbcsql18)
 # must be installed at runtime if SQL Server support is needed.
 # See docs/enable-sqlserver.md for instructions.
-COPY requirements.txt .
+COPY requirements-docker.txt .
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/venv/bin/pip install --no-cache-dir \
-        pymysql>=1.0.0 \
-        psycopg2-binary>=2.9.0 \
-        oracledb>=1.4.0 \
-        pyodbc>=4.0.0 \
-        flask>=2.0.0 \
-    && /opt/venv/bin/pip install --no-cache-dir dmpython>=1.0.0 \
-        || echo "WARNING: dmpython installation failed (DM8 support disabled). Install manually if needed."
-        flask-socketio>=5.0.0 \
-        gevent>=24.0.0 \
-        psutil>=5.9.0 \
-        pyyaml>=6.0.0 \
-        cryptography>=41.0.0 \
-        paramiko>=2.10.0 \
-        openpyxl>=3.0.0 \
-        reportlab>=4.0.0 \
-        apscheduler>=3.10.0 \
-        PyPDF2>=3.0.1 \
-        python-docx>=0.8.10 \
-        docxtpl>=0.16.0 \
+    && /opt/venv/bin/pip install --no-cache-dir -r requirements-docker.txt \
     && find /opt/venv -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true \
     && find /opt/venv -name "*.pyc" -delete 2>/dev/null || true
+
+# dmpython: install separately (requires DM8 client libs; non-fatal)
+RUN /opt/venv/bin/pip install --no-cache-dir dmpython>=1.0.0 \
+    || echo "WARNING: dmpython installation failed (DM8 support disabled)."
 
 # YashanDB wheel: downloaded at runtime via the "Database Client Settings" page.
 # If pre-install is desired, uncomment and ensure .dockerignore does not exclude drivers/
