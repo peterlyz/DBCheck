@@ -2215,12 +2215,10 @@ def api_test_server_ssh():
 
 @app.route('/api/server_inspect', methods=['POST'])
 def api_start_server_inspect():
-    """启动服务器巡检任务"""
+    """启动服务器巡检任务（支持本地/远程）"""
     try:
         data = request.json or {}
-        ssh_host = data.get('ssh_host', '').strip()
-        if not ssh_host:
-            return jsonify({'ok': False, 'msg': '请填写 SSH 主机地址'})
+        host_type = data.get('host_type', 'remote').strip()
 
         task_id = str(uuid.uuid4())
         tasks[task_id] = {
@@ -2231,18 +2229,28 @@ def api_start_server_inspect():
             'log': [],
         }
 
-        ssh_info = {
-            'ssh_host': ssh_host,
-            'ssh_port': int(data.get('ssh_port', 22)),
-            'ssh_user': data.get('ssh_user', 'root'),
-            'ssh_password': data.get('ssh_password', ''),
-            'ssh_key_file': data.get('ssh_key_file', ''),
-        }
-
-        t = threading.Thread(target=_run_server_inspect_task, args=(task_id, ssh_info))
-        t.daemon = True
-        t.start()
-        return jsonify({'ok': True, 'task_id': task_id})
+        if host_type == 'local':
+            ssh_info = {'host_type': 'local'}
+            t = threading.Thread(target=_run_server_inspect_task, args=(task_id, ssh_info))
+            t.daemon = True
+            t.start()
+            return jsonify({'ok': True, 'task_id': task_id})
+        else:
+            ssh_host = data.get('ssh_host', '').strip()
+            if not ssh_host:
+                return jsonify({'ok': False, 'msg': '请填写 SSH 主机地址'})
+            ssh_info = {
+                'host_type': 'remote',
+                'ssh_host': ssh_host,
+                'ssh_port': int(data.get('ssh_port', 22)),
+                'ssh_user': data.get('ssh_user', 'root'),
+                'ssh_password': data.get('ssh_password', ''),
+                'ssh_key_file': data.get('ssh_key_file', ''),
+            }
+            t = threading.Thread(target=_run_server_inspect_task, args=(task_id, ssh_info))
+            t.daemon = True
+            t.start()
+            return jsonify({'ok': True, 'task_id': task_id})
     except Exception as e:
         return jsonify({'ok': False, 'msg': str(e)})
 
@@ -2258,19 +2266,41 @@ def _run_server_inspect_task(task_id, ssh_info):
             task.setdefault('log', []).append(msg)
         emit(event, data, room=task_id)
 
-    _emit('log', {'msg': f"[{_ts()}] 🖥️ 开始服务器巡检: {ssh_info['ssh_host']}:{ssh_info['ssh_port']}"})
-
     try:
-        from server_inspect import run_server_inspection, generate_server_report
+        host_type = ssh_info.get('host_type', 'remote')
 
-        _emit('log', {'msg': f"[{_ts()}] 🔗 正在建立 SSH 连接..."})
-        result = run_server_inspection(
-            ssh_host=ssh_info['ssh_host'],
-            ssh_port=ssh_info['ssh_port'],
-            ssh_user=ssh_info['ssh_user'],
-            ssh_password=ssh_info['ssh_password'],
-            ssh_key_file=ssh_info['ssh_key_file'],
-        )
+        if host_type == 'local':
+            _emit('log', {'msg': f"[{_ts()}] 🖥️ 开始本机巡检..."})
+            try:
+                from server_inspect import run_local_inspection, generate_server_report
+                _emit('log', {'msg': f"[{_ts()}] 📡 正在采集本机系统信息..."})
+                result = run_local_inspection()
+            except Exception as e:
+                _emit('error', {'msg': f"[{_ts()}] ❌ 本机巡检异常: {e}"})
+                if task:
+                    task['status'] = 'error'
+                    task['error'] = str(e)
+                return
+        else:
+            _emit('log', {'msg': f"[{_ts()}] 🖥️ 开始服务器巡检: {ssh_info['ssh_host']}:{ssh_info['ssh_port']}"})
+
+            try:
+                from server_inspect import run_server_inspection, generate_server_report
+
+                _emit('log', {'msg': f"[{_ts()}] 🔗 正在建立 SSH 连接..."})
+                result = run_server_inspection(
+                    ssh_host=ssh_info['ssh_host'],
+                    ssh_port=ssh_info['ssh_port'],
+                    ssh_user=ssh_info['ssh_user'],
+                    ssh_password=ssh_info['ssh_password'],
+                    ssh_key_file=ssh_info['ssh_key_file'],
+                )
+            except Exception as e:
+                _emit('error', {'msg': f"[{_ts()}] ❌ 巡检异常: {e}"})
+                if task:
+                    task['status'] = 'error'
+                    task['error'] = str(e)
+                return
 
         if 'error' in result:
             _emit('error', {'msg': f"[{_ts()}] ❌ {result['error']}"})
@@ -2314,9 +2344,11 @@ def _run_server_inspect_task(task_id, ssh_info):
         # 保存巡检历史
         try:
             from server_inspect import save_server_inspection
+            host = result.get('host', 'localhost') if ssh_info.get('host_type') == 'local' else ssh_info.get('ssh_host', 'unknown')
+            port = 0 if ssh_info.get('host_type') == 'local' else ssh_info.get('ssh_port', 22)
             save_server_inspection(
-                host=ssh_info['ssh_host'],
-                port=ssh_info['ssh_port'],
+                host=host,
+                port=port,
                 result=result,
                 report_path=report_path or '',
             )
@@ -2536,6 +2568,9 @@ def api_task_status(task_id):
         'log': log_list[offset:],
         'offset': len(log_list),
         'auto_analyze': task.get('auto_analyze', []),
+        'result': result if isinstance(result, dict) else {},
+        'report_file': task.get('report_file', ''),
+        'report_name': task.get('report_name', ''),
     }
     if isinstance(result, dict):
         resp.update(result)

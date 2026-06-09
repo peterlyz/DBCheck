@@ -287,6 +287,87 @@ class RemoteSystemInfoCollector:
         except Exception:
             return {}
 
+    def get_docker_info(self):
+        """
+        采集 Docker 容器信息。
+        返回 {
+            'available': True/False,
+            'running_count': int,
+            'total_count': int,
+            'unhealthy': [{'name', 'container_id', 'status', 'image'}],
+            'containers': [{'name', 'container_id', 'status', 'image', 'ports'}],
+        }
+        """
+        result = {
+            'available': False,
+            'running_count': 0,
+            'total_count': 0,
+            'unhealthy': [],
+            'containers': [],
+        }
+        # 检查 docker 命令是否存在
+        _, err = self.exec_cmd("which docker")
+        if err or not _:
+            return result
+        # 检查 docker 服务是否运行
+        out, err = self.exec_cmd("docker info >/dev/null 2>&1 && echo OK || echo FAIL")
+        if not out or 'OK' not in out:
+            result['available'] = False
+            return result
+        result['available'] = True
+
+        # 运行中的容器数
+        out, _ = self.exec_cmd("docker ps -q 2>/dev/null | wc -l")
+        try:
+            result['running_count'] = int(out.strip())
+        except ValueError:
+            pass
+
+        # 总容器数（含已停止的）
+        out, _ = self.exec_cmd("docker ps -a -q 2>/dev/null | wc -l")
+        try:
+            result['total_count'] = int(out.strip())
+        except ValueError:
+            pass
+
+        # 不健康的容器（unhealthy）
+        out, _ = self.exec_cmd(
+            "docker ps -a --filter health=unhealthy --format '{{.Names}}|{{.ID}}|{{.Status}}|{{.Image}}' 2>/dev/null"
+        )
+        if out:
+            for line in out.strip().split('\n'):
+                if '|' in line:
+                    parts = line.split('|')
+                    result['unhealthy'].append({
+                        'name': parts[0],
+                        'container_id': parts[1][:12],
+                        'status': parts[2],
+                        'image': parts[3],
+                    })
+
+        # 容器列表（运行中 + 非运行中分开）
+        out, _ = self.exec_cmd(
+            "docker ps -a --format '{{.Names}}|{{.ID}}|{{.Status}}|{{.Image}}|{{.Ports}}' 2>/dev/null | head -20"
+        )
+        if out:
+            for line in out.strip().split('\n'):
+                if '|' in line:
+                    parts = line.split('|')
+                    name = parts[0]
+                    container_id = parts[1][:12] if len(parts) > 1 else ''
+                    status = parts[2] if len(parts) > 2 else ''
+                    image = parts[3] if len(parts) > 3 else ''
+                    ports = parts[4] if len(parts) > 4 else ''
+                    result['containers'].append({
+                        'name': name,
+                        'container_id': container_id,
+                        'status': status,
+                        'image': image,
+                        'ports': ports,
+                    })
+
+        return result
+
     def get_system_info(self):
         if not self.connect():
             return {}
@@ -297,6 +378,7 @@ class RemoteSystemInfoCollector:
                 'disk': self.get_disk_info(),
                 'top_processes': self.get_top_processes(),
                 'open_files': self.get_open_files(),
+                'docker': self.get_docker_info(),
                 'hostname': '',
                 'platform': '',
                 'kernel': '',
@@ -426,11 +508,11 @@ class LocalSystemInfoCollector:
                 try:
                     info = proc.info
                     procs.append({
-                        'pid': info['pid'],
-                        'user': info.get('username', ''),
-                        'cpu': info.get('cpu_percent', 0.0),
-                        'mem': info.get('memory_percent', 0.0),
-                        'command': info.get('name', ''),
+                        'pid': info.get('pid', 0),
+                        'user': (info.get('username') or ''),
+                        'cpu': (info.get('cpu_percent') or 0.0),
+                        'mem': (info.get('memory_percent') or 0.0),
+                        'command': (info.get('name') or ''),
                     })
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     continue
@@ -450,6 +532,91 @@ class LocalSystemInfoCollector:
             return {'allocated': allocated, 'max': allocated}
         except Exception:
             return {}
+
+    def get_docker_info(self):
+        """
+        本地采集 Docker 容器信息（通过 subprocess 调用 docker 命令）。
+        返回格式同 RemoteSystemInfoCollector.get_docker_info()
+        """
+        import subprocess
+        result = {
+            'available': False,
+            'running_count': 0,
+            'total_count': 0,
+            'unhealthy': [],
+            'containers': [],
+        }
+        try:
+            # 检查 docker 命令是否可用
+            subprocess.run(['docker', '--version'], capture_output=True, check=True, timeout=5)
+        except Exception:
+            return result
+
+        try:
+            subprocess.run(['docker', 'info'], capture_output=True, check=True, timeout=10)
+        except Exception:
+            result['available'] = False
+            return result
+
+        result['available'] = True
+
+        # 运行中的容器数
+        try:
+            out = subprocess.run(['docker', 'ps', '-q'], capture_output=True, text=True, timeout=10).stdout.strip()
+            result['running_count'] = len(out.splitlines()) if out else 0
+        except Exception:
+            pass
+
+        # 总容器数
+        try:
+            out = subprocess.run(['docker', 'ps', '-a', '-q'], capture_output=True, text=True, timeout=10).stdout.strip()
+            result['total_count'] = len(out.splitlines()) if out else 0
+        except Exception:
+            pass
+
+        # 不健康容器
+        try:
+            out = subprocess.run(
+                ['docker', 'ps', '-a', '--filter', 'health=unhealthy',
+                 '--format', '{{.Names}}|{{.ID}}|{{.Status}}|{{.Image}}'],
+                capture_output=True, text=True, timeout=10
+            ).stdout.strip()
+            if out:
+                for line in out.splitlines():
+                    parts = line.split('|')
+                    if len(parts) >= 4:
+                        result['unhealthy'].append({
+                            'name': parts[0],
+                            'container_id': parts[1][:12],
+                            'status': parts[2],
+                            'image': parts[3],
+                        })
+        except Exception:
+            pass
+
+        # 容器列表（最近 20 个）
+        try:
+            out = subprocess.run(
+                ['docker', 'ps', '-a', '--format',
+                 '{{.Names}}|{{.ID}}|{{.Status}}|{{.Image}}|{{.Ports}}'],
+                capture_output=True, text=True, timeout=10
+            ).stdout.strip()
+            if out:
+                for i, line in enumerate(out.splitlines()):
+                    if i >= 20:
+                        break
+                    parts = line.split('|')
+                    result['containers'].append({
+                        'name': parts[0] if len(parts) > 0 else '',
+                        'container_id': parts[1][:12] if len(parts) > 1 else '',
+                        'status': parts[2] if len(parts) > 2 else '',
+                        'image': parts[3] if len(parts) > 3 else '',
+                        'ports': parts[4] if len(parts) > 4 else '',
+                    })
+        except Exception:
+            pass
+
+        return result
 
     def get_system_info(self):
         hostname = socket.gethostname()
@@ -471,6 +638,7 @@ class LocalSystemInfoCollector:
             'disk': self.get_disk_info(),
             'top_processes': self.get_top_processes(),
             'open_files': self.get_open_files(),
+            'docker': self.get_docker_info(),
             'hostname': hostname,
             'platform': plat,
             'kernel': kernel,
@@ -550,6 +718,23 @@ def compute_health_score(info):
             score -= 10
             issues.append(f"inode {mp} 使用率偏高 ({inode_pct:.1f}%)")
 
+    # Docker 容器健康检查
+    docker = info.get('docker', {})
+    if docker.get('available'):
+        unhealthy = docker.get('unhealthy', [])
+        if unhealthy:
+            score -= 15
+            names = ', '.join([u['name'] for u in unhealthy[:3]])
+            if len(unhealthy) > 3:
+                names += f' 等{len(unhealthy)}个'
+            issues.append(f"Docker 存在不健康容器 ({names})")
+        # 运行容器数 vs 总容器数（警告过多停止的容器）
+        total = docker.get('total_count', 0)
+        running = docker.get('running_count', 0)
+        if total > 0 and running == 0:
+            score -= 5
+            issues.append(f"Docker 容器全部未运行（共{total}个容器）")
+
     score = max(0, min(100, score))
 
     if score >= 90:
@@ -625,11 +810,149 @@ def run_local_inspection():
     if not info:
         return {'error': '本地采集失败'}
 
+    # 网络连通性检测（本地执行 ping/curl）
+    try:
+        info['network'] = check_network_connectivity_local()
+    except Exception:
+        info['network'] = {}
+
+    # 服务状态检测（本地执行 systemctl）
+    try:
+        info['services'] = check_local_service_status()
+    except Exception:
+        info['services'] = []
+
     score, status, issues = compute_health_score(info)
     info['health_score'] = score
     info['health_status'] = status
     info['issues'] = issues
+    info['host'] = 'localhost'
     return info
+
+
+def check_network_connectivity_local():
+    """本地网络连通性检测（不依赖 SSH）"""
+    import subprocess
+    targets = [
+        ('8.8.8.8', 'ICMP', 'DNS'),
+        ('baidu.com', 'DNS', 'baidu.com'),
+        ('223.5.5.5', 'ICMP', 'AliDNS'),
+    ]
+    results = {}
+    for host, check_type, label in targets:
+        if check_type == 'ICMP':
+            try:
+                timeout = 3
+                # Windows: -n 次数; Linux: -c 次数
+                flag = '-n' if subprocess.run(['ver'], capture_output=True).returncode == 0 else '-c'
+                result = subprocess.run(
+                    ['ping', flag, '1', '-w', str(timeout * 1000) if flag == '-n' else '-W', str(timeout), host],
+                    capture_output=True, text=True, timeout=timeout + 2
+                )
+                ok = result.returncode == 0
+                results[label] = {'type': 'ICMP', 'target': host, 'ok': ok,
+                                  'detail': '可达' if ok else '不可达'}
+            except Exception:
+                results[label] = {'type': 'ICMP', 'target': host, 'ok': False, 'detail': '检测失败'}
+    return results
+
+
+def check_local_service_status():
+    """本地服务状态检测（跨平台，不依赖 SSH）"""
+    import subprocess
+    import platform
+
+    sys_name = platform.system()  # 'Linux', 'Windows', 'Darwin'
+
+    if sys_name == 'Linux':
+        services = ['sshd', 'firewalld', 'docker', 'crond', 'rsyslog', 'nginx', 'mysqld', 'postgresql']
+        results = []
+        for svc in services:
+            try:
+                result = subprocess.run(
+                    ['systemctl', 'is-active', svc],
+                    capture_output=True, text=True, timeout=5
+                )
+                raw = result.stdout.strip()
+                if raw == 'active':
+                    status = 'running'
+                elif raw in ('inactive', 'failed', 'deactivating'):
+                    status = 'stopped'
+                else:
+                    status = 'not_installed'
+                results.append({'name': svc, 'status': status})
+            except Exception:
+                results.append({'name': svc, 'status': 'not_installed'})
+        return results
+
+    elif sys_name == 'Windows':
+        # Windows 服务检测：用 sc.exe query
+        import os
+        sc_path = os.path.join(os.environ.get('SystemRoot', 'C:\\Windows'), 'System32', 'sc.exe')
+        svc_map = {
+            'Spooler': 'Print Spooler',
+            'MpsSvc': 'Windows Defender 防火墙',
+            'wuauserv': 'Windows Update',
+            'BITS': '后台智能传输服务',
+            'sshd': 'OpenSSH Server',
+            'com.docker.service': 'Docker Desktop',
+            'W3SVC': 'IIS',
+            'EventLog': 'Windows 事件日志',
+        }
+        results = []
+        for svc_name, display_name in svc_map.items():
+            try:
+                result = subprocess.run(
+                    [sc_path, 'query', svc_name],
+                    capture_output=True, text=True, timeout=5
+                )
+                output = result.stdout.strip()
+                if 'RUNNING' in output:
+                    status = 'running'
+                elif 'STOPPED' in output:
+                    status = 'stopped'
+                else:
+                    status = 'not_installed'
+                results.append({'name': display_name, 'status': status})
+            except Exception:
+                results.append({'name': display_name, 'status': 'not_installed'})
+        return results
+
+    elif sys_name == 'Darwin':  # macOS
+        # macOS: 用 launchctl + brew services 检测常见服务
+        svc_map = {
+            'ssh': 'SSH 远程登录',
+            'nginx': 'Nginx',
+            'httpd': 'Apache (httpd)',
+            'docker': 'Docker Desktop',
+            'postgresql': 'PostgreSQL',
+            'mysql': 'MySQL',
+            'redis': 'Redis',
+        }
+        results = []
+        for svc_name, display_name in svc_map.items():
+            try:
+                # 先尝试 brew services
+                result = subprocess.run(
+                    ['brew', 'services', 'info', svc_name, '--json'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0 and 'running' in result.stdout.lower():
+                    results.append({'name': display_name, 'status': 'running'})
+                else:
+                    # 尝试 pgrep
+                    pgrep = subprocess.run(['pgrep', '-x', svc_name],
+                                          capture_output=True, timeout=3)
+                    if pgrep.returncode == 0:
+                        results.append({'name': display_name, 'status': 'running'})
+                    else:
+                        results.append({'name': display_name, 'status': 'stopped'})
+            except Exception:
+                results.append({'name': display_name, 'status': 'not_installed'})
+        return results
+
+    else:
+        return []
 
 
 def test_ssh_connection(ssh_host, ssh_port=22, ssh_user='root',
@@ -805,11 +1128,11 @@ def generate_server_report(info, output_dir=None):
         for i, h in enumerate(hdrs):
             t.rows[0].cells[i].text = h
         for ri, p in enumerate(procs, 1):
-            t.rows[ri].cells[0].text = str(p.get('pid', ''))
-            t.rows[ri].cells[1].text = p.get('user', '')
-            t.rows[ri].cells[2].text = f"{p.get('cpu', 0):.1f}"
-            t.rows[ri].cells[3].text = f"{p.get('mem', 0):.1f}"
-            t.rows[ri].cells[4].text = p.get('command', '')
+            t.rows[ri].cells[0].text = str(p.get('pid', 0))
+            t.rows[ri].cells[1].text = str(p.get('user') or '')
+            t.rows[ri].cells[2].text = f"{(p.get('cpu') or 0):.1f}"
+            t.rows[ri].cells[3].text = f"{(p.get('mem') or 0):.1f}"
+            t.rows[ri].cells[4].text = str(p.get('command') or '')
 
     # ── 第4章：其他信息 ──
     doc.add_heading('4. 其他系统信息', level=1)
@@ -823,6 +1146,42 @@ def generate_server_report(info, output_dir=None):
     for i, (label, value) in enumerate(rows_data):
         t.rows[i].cells[0].text = label
         t.rows[i].cells[1].text = value
+
+    # ── 第5章：Docker 容器信息 ──
+    docker = info.get('docker', {})
+    doc.add_page_break()
+    doc.add_heading('5. Docker 容器信息', level=1)
+
+    if not docker.get('available'):
+        doc.add_paragraph('⚠️ 该服务器未安装 Docker，或 Docker 服务未运行，跳过容器巡检。')
+    else:
+        # 概览
+        summary = f"运行中容器: {docker.get('running_count', 0)} / 总计: {docker.get('total_count', 0)}"
+        doc.add_paragraph(summary)
+
+        # 不健康容器
+        unhealthy = docker.get('unhealthy', [])
+        if unhealthy:
+            p = doc.add_paragraph('⚠️ 不健康容器：')
+            for u in unhealthy:
+                doc.add_paragraph(f"• {u.get('name') or ''} — {u.get('status') or ''} ({u.get('image') or ''})", style='List Bullet')
+        else:
+            doc.add_paragraph('✅ 所有容器健康状态正常')
+
+        # 容器列表表格
+        containers = docker.get('containers', [])
+        if containers:
+            doc.add_heading('容器列表', level=2)
+            t = doc.add_table(rows=1 + min(len(containers), 20), cols=4)
+            t.style = 'Table Grid'
+            hdrs = ['容器名', '状态', '镜像', '端口']
+            for i, h in enumerate(hdrs):
+                t.rows[0].cells[i].text = h
+            for ri, c in enumerate(containers[:20], 1):
+                t.rows[ri].cells[0].text = str(c.get('name') or '')
+                t.rows[ri].cells[1].text = str(c.get('status') or '')
+                t.rows[ri].cells[2].text = str(c.get('image') or '')
+                t.rows[ri].cells[3].text = str(c.get('ports') or '')
 
     # ── 保存 ──
     hostname = info.get('hostname', 'unknown').replace(' ', '_')
@@ -1219,6 +1578,7 @@ def generate_server_share_html(result, output_dir=None):
     procs = result.get('top_processes', [])
     network = result.get('network', {})
     services = result.get('services', [])
+    docker = result.get('docker', {})
     inspect_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # 评分颜色
@@ -1290,7 +1650,7 @@ def generate_server_share_html(result, output_dir=None):
         items = ''.join(f'<div class="issue-item">{esc_html(i)}</div>' for i in issues)
         issues_html = f'<div class="section"><h2>⚠️ 发现的问题</h2>{items}</div>'
 
-    # 网络/服务区块
+    # 网络/服务/容器区块
     network_section = ''
     if network_rows:
         network_section = f'''<div class="section"><h2>🌐 网络连通性检测</h2>
@@ -1300,6 +1660,43 @@ def generate_server_share_html(result, output_dir=None):
     if service_rows:
         service_section = f'''<div class="section"><h2>🔧 服务状态</h2>
           <table><tr><th>服务</th><th>状态</th></tr>{service_rows}</table></div>'''
+
+    # Docker 章节（始终显示）
+    dc = docker.get('running_count', 0)
+    dt = docker.get('total_count', 0)
+    du = docker.get('unhealthy', [])
+    if not docker.get('available'):
+        docker_section = '''<div class="section"><h2>🐳 Docker 容器</h2>
+          <p style="color:#8b949e;margin-bottom:12px">⚠️ 该服务器未安装 Docker，或 Docker 服务未运行，跳过容器巡检。</p></div>'''
+    else:
+        docker_overview = f'<p style="color:#c9d1d9;margin-bottom:12px">运行中: <b style="color:#2ea043">{dc}</b> / 总计: <b>{dt}</b></p>'
+        unhealthy_rows = ''
+        if du:
+            unhealthy_rows = '<div style="margin-bottom:12px"><b style="color:#f85149">⚠️ 不健康容器：</b>'
+            for u in du:
+                unhealthy_rows += f'<div style="padding:4px 0 4px 16px;font-size:13px">{esc_html(u["name"])} — {esc_html(u["status"])} <span style="color:#8b949e">{esc_html(u["image"])}</span></div>'
+            unhealthy_rows += '</div>'
+        else:
+            unhealthy_rows = '<div style="margin-bottom:12px;color:#2ea043">✅ 所有容器健康状态正常</div>'
+        # 容器列表表格
+        cont_rows = ''
+        containers = docker.get('containers', [])
+        if containers:
+            for c in containers[:20]:
+                name = esc_html(c.get('name', ''))
+                status = esc_html(c.get('status', ''))
+                image = esc_html(c.get('image', ''))
+                ports = esc_html(c.get('ports', ''))
+                status_color = '#2ea043' if 'Up' in status or 'healthy' in status else '#f85149'
+                cont_rows += f'<tr><td>{name}</td><td style="color:{status_color}">{status}</td><td>{image}</td><td style="font-size:12px">{ports}</td></tr>'
+            docker_section = f'''<div class="section"><h2>🐳 Docker 容器</h2>
+          {docker_overview}
+          {unhealthy_rows}
+          <table><tr><th>容器名</th><th>状态</th><th>镜像</th><th>端口</th></tr>{cont_rows}</table></div>'''
+        else:
+            docker_section = f'''<div class="section"><h2>🐳 Docker 容器</h2>
+          {docker_overview}
+          {unhealthy_rows}</div>'''
 
     html = f'''<!DOCTYPE html>
 <html lang="zh-CN">
@@ -1372,6 +1769,7 @@ def generate_server_share_html(result, output_dir=None):
 
   {network_section}
   {service_section}
+  {docker_section}
 
   <div class="section">
     <h2>⚙️ Top 进程</h2>

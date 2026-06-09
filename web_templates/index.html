@@ -5221,9 +5221,21 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
       <div class="page" id="page-server-inspect">
         <div class="card">
           <div class="card-title"><span>🖥️</span> <span data-i18n="webui.server_inspect_title">服务器巡检</span></div>
-          <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line" data-i18n="webui.server_inspect_desc">通过 SSH 连接远程服务器，采集 CPU、内存、磁盘、进程等系统指标，生成独立巡检报告。</div>
+          <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line" data-i18n="webui.server_inspect_desc">支持本机巡检（无需 SSH）和远程服务器巡检（通过 SSH 连接）。</div>
 
-          <!-- SSH 连接表单 -->
+          <!-- 巡检类型切换 -->
+          <div class="form-grid" style="grid-template-columns:1fr 1fr;margin-bottom:20px">
+            <div class="form-group">
+              <label data-i18n="webui.server_inspect_type">巡检类型</label>
+              <select id="si-type" class="form-input" onchange="toggleSiType()">
+                <option value="local" data-i18n="webui.server_inspect_type_local">本机巡检</option>
+                <option value="remote" data-i18n="webui.server_inspect_type_remote">SSH 远程巡检</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- SSH 连接表单（远程时显示） -->
+          <div id="si-remote-fields" style="display:none">
           <div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div class="form-group">
               <label data-i18n="webui.server_inspect_host">SSH 主机地址 *</label>
@@ -5258,6 +5270,10 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
 
           <div class="btn-row" style="margin-top:12px">
             <button class="btn btn-ghost" onclick="testServerSSH()" data-i18n="webui.server_inspect_test_ssh">🔗 测试 SSH 连接</button>
+          </div>
+          </div><!-- /si-remote-fields -->
+
+          <div class="btn-row" style="margin-top:12px">
             <button class="btn btn-primary" onclick="startServerInspect()" data-i18n="webui.server_inspect_start">🚀 开始巡检</button>
           </div>
         </div>
@@ -12915,7 +12931,14 @@ async function deleteBackupHistory(recordId) {
     document.getElementById('si-key-wrap').style.display = auth === 'key' ? '' : 'none';
   }
 
+  function toggleSiType() {
+    const type = document.getElementById('si-type').value;
+    document.getElementById('si-remote-fields').style.display = type === 'remote' ? '' : 'none';
+  }
+
   async function testServerSSH() {
+    const hostType = document.getElementById('si-type').value;
+    if (hostType === 'local') { toastError('本机巡检无需 SSH 连接'); return; }
     const host = document.getElementById('si-ssh-host').value.trim();
     if (!host) { toastError('请输入 SSH 主机地址'); return; }
     const statusEl = document.getElementById('si-ssh-test-status');
@@ -12948,25 +12971,31 @@ async function deleteBackupHistory(recordId) {
   }
 
   async function startServerInspect() {
-    const host = document.getElementById('si-ssh-host').value.trim();
-    if (!host) { toastError('请输入 SSH 主机地址'); return; }
+    const hostType = document.getElementById('si-type').value;
+    if (hostType === 'remote') {
+      const host = document.getElementById('si-ssh-host').value.trim();
+      if (!host) { toastError('请输入 SSH 主机地址'); return; }
+    }
 
     // 重置 UI
     document.getElementById('si-log-card').style.display = '';
     document.getElementById('si-log-area').innerHTML = '';
     document.getElementById('si-result-card').style.display = 'none';
 
+    const payload = hostType === 'local' ? {host_type: 'local'} : {
+      host_type: 'remote',
+      ssh_host: document.getElementById('si-ssh-host').value.trim(),
+      ssh_port: parseInt(document.getElementById('si-ssh-port').value) || 22,
+      ssh_user: document.getElementById('si-ssh-user').value.trim() || 'root',
+      ssh_password: document.getElementById('si-ssh-password').value || '',
+      ssh_key_file: document.getElementById('si-ssh-key').value.trim() || '',
+    };
+
     try {
       const res = await fetch('/api/server_inspect', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-          ssh_host: host,
-          ssh_port: parseInt(document.getElementById('si-ssh-port').value) || 22,
-          ssh_user: document.getElementById('si-ssh-user').value.trim() || 'root',
-          ssh_password: document.getElementById('si-ssh-password').value || '',
-          ssh_key_file: document.getElementById('si-ssh-key').value.trim() || '',
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (!data.ok) {
