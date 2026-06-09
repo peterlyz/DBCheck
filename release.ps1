@@ -63,7 +63,8 @@ Write-Host "[3/4] Updating version files..." -ForegroundColor Yellow
 # Update version.py
 $VersionPy = Join-Path $ProjectRoot "version.py"
 if (Test-Path $VersionPy) {
-    python -c "import re; p=r'$VersionPy'; t=open(p,'r',encoding='utf-8').read(); t=re.sub(r'__version__\s*=\s*.+', \"__version__ = '$VersionWithV'\", t); open(p,'w',encoding='utf-8').write(t)"
+    $escapedVersion = $VersionWithV -replace "'", "''"
+    python -c "import re; p=r'$VersionPy'; t=open(p,'r',encoding='utf-8').read(); t=re.sub(r\"__version__\s*=\s*.+\", \"__version__ = '$escapedVersion'\" , t); open(p,'w',encoding='utf-8').write(t)"
     Write-Host "  OK: version.py updated to $VersionWithV" -ForegroundColor Green
 } else {
     Write-Host "  WARN: version.py not found, skipped" -ForegroundColor Yellow
@@ -72,7 +73,7 @@ if (Test-Path $VersionPy) {
 # Update Dockerfile
 $Dockerfile = Join-Path $ProjectRoot "Dockerfile"
 if (Test-Path $Dockerfile) {
-    python -c "import re; p=r'$Dockerfile'; t=open(p,'r',encoding='utf-8').read(); t=re.sub(r'RUN echo [^>]+\s+>\s+/app/VERSION\.txt', 'RUN echo \"$Version\" > /app/VERSION.txt', t); open(p,'w',encoding='utf-8').write(t)"
+    python -c "import re; p=r'$Dockerfile'; t=open(p,'r',encoding='utf-8').read(); t=re.sub(r'RUN echo [^>]+\s+>\s+/app/VERSION\.txt', 'RUN echo $Version > /app/VERSION.txt', t); open(p,'w',encoding='utf-8').write(t)"
     Write-Host "  OK: Dockerfile updated to $Version" -ForegroundColor Green
 } else {
     Write-Host "  WARN: Dockerfile not found, skipped" -ForegroundColor Yellow
@@ -88,7 +89,11 @@ if ($LASTEXITCODE -eq 0) {
     Write-Host "  WARN: Nothing to commit, skipping commit" -ForegroundColor Yellow
 } else {
     git commit -m "Release $VersionWithV"
-    git push origin main 2>&1 | Out-Null
+    git push origin main
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: git push failed" -ForegroundColor Red
+        exit 1
+    }
     Write-Host "  OK: Pushed to GitHub (main)" -ForegroundColor Green
 }
 
