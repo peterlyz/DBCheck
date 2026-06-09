@@ -98,10 +98,10 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 # Delete tag if exists (for re-run, suppress error if not found)
-git tag -d $VersionWithV 2>$null
-if ($LASTEXITCODE -ne 0) { Write-Host "  (tag not found locally, skipping)" -ForegroundColor Gray }
-git push origin :refs/tags/$VersionWithV 2>$null
-if ($LASTEXITCODE -ne 0) { Write-Host "  (remote tag not found, skipping)" -ForegroundColor Gray }
+try   { git tag -d $VersionWithV 2>&1 | Out-Null } catch {}
+Write-Host "  (cleaned local tag if existed)" -ForegroundColor Gray
+try   { git push origin :refs/tags/$VersionWithV 2>&1 | Out-Null } catch {}
+Write-Host "  (cleaned remote tag if existed)" -ForegroundColor Gray
 
 # Create and push tag (triggers GitHub Actions)
 git tag $VersionWithV
