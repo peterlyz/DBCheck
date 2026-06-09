@@ -3669,14 +3669,85 @@ def main():
     print("\n2. 创建默认模板（含预置 SQL）...")
     init_default_templates(db_path, args.force)
 
-    # 初始化默认基线配置
-    print("\n3. 初始化默认基线配置...")
-    init_default_baselines(db_path)
+    # 初始化服务器巡检阈值配置
+    print("\n4. 初始化服务器巡检阈值配置...")
+    init_server_thresholds(db_path, args.force)
 
     print("\n" + "=" * 50)
     print("✅ 初始化完成！")
     print(f"数据库文件：{db_path}")
     print("现在你可以使用 DBCheck Web UI 来管理巡检配置。")
+
+
+def init_server_thresholds(db_path: str = None, force: bool = False):
+    """
+    初始化服务器巡检阈值配置表（server_thresholds）。
+    默认阈值通过 INSERT OR IGNORE 插入，保留用户修改。
+    """
+    print("开始初始化服务器巡检阈值配置...")
+    import sqlite3, datetime
+
+    if db_path is None:
+        db_path = DEFAULT_DB_PATH
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    # 强制重新初始化
+    if force:
+        print("🗑️  强制重新初始化，删除 server_thresholds 表...")
+        cur.execute("DROP TABLE IF EXISTS server_thresholds")
+
+    # 建表
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS server_thresholds (
+        key VARCHAR(100) PRIMARY KEY,
+        value REAL NOT NULL,
+        value_str VARCHAR(100),
+        description_zh TEXT,
+        description_en TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+
+    # 默认值
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    defaults = [
+        ('cpu_warning_pct', 70, None, 'CPU 使用率警告阈值 (%)', 'CPU usage warning threshold (%)', now),
+        ('cpu_critical_pct', 90, None, 'CPU 使用率危险阈值 (%)', 'CPU usage critical threshold (%)', now),
+        ('cpu_warning_penalty', 10, None, 'CPU 使用率警告扣分', 'CPU usage warning penalty', now),
+        ('cpu_critical_penalty', 20, None, 'CPU 使用率危险扣分', 'CPU usage critical penalty', now),
+        ('mem_warning_pct', 75, None, '内存使用率警告阈值 (%)', 'Memory usage warning threshold (%)', now),
+        ('mem_critical_pct', 90, None, '内存使用率危险阈值 (%)', 'Memory usage critical threshold (%)', now),
+        ('mem_warning_penalty', 10, None, '内存使用率警告扣分', 'Memory usage warning penalty', now),
+        ('mem_critical_penalty', 20, None, '内存使用率危险扣分', 'Memory usage critical penalty', now),
+        ('swap_warning_pct', 50, None, 'Swap 使用率警告阈值 (%)', 'Swap usage warning threshold (%)', now),
+        ('swap_warning_penalty', 10, None, 'Swap 使用率警告扣分', 'Swap usage warning penalty', now),
+        ('disk_warning_pct', 80, None, '磁盘使用率警告阈值 (%)', 'Disk usage warning threshold (%)', now),
+        ('disk_critical_pct', 90, None, '磁盘使用率危险阈值 (%)', 'Disk usage critical threshold (%)', now),
+        ('disk_warning_penalty', 8, None, '磁盘使用率警告扣分', 'Disk usage warning penalty', now),
+        ('disk_critical_penalty', 15, None, '磁盘使用率危险扣分', 'Disk usage critical penalty', now),
+        ('inode_warning_pct', 80, None, 'inode 使用率警告阈值 (%)', 'Inode usage warning threshold (%)', now),
+        ('inode_warning_penalty', 10, None, 'inode 使用率警告扣分', 'Inode usage warning penalty', now),
+        ('docker_unhealthy_penalty', 15, None, 'Docker 不健康容器扣分', 'Docker unhealthy container penalty', now),
+        ('docker_all_stopped_penalty', 5, None, 'Docker 全部停止扣分', 'Docker all stopped penalty', now),
+        ('health_excellent_threshold', 90, None, '健康评分优秀阈值', 'Health score excellent threshold', now),
+        ('health_good_threshold', 75, None, '健康评分良好阈值', 'Health score good threshold', now),
+        ('health_fair_threshold', 60, None, '健康评分一般阈值', 'Health score fair threshold', now),
+        ('zombie_warning_count', 1, None, '僵尸进程警告数量', 'Zombie process warning count', now),
+        ('zombie_critical_count', 5, None, '僵尸进程危险数量', 'Zombie process critical count', now),
+        ('zombie_warning_penalty', 5, None, '僵尸进程警告扣分', 'Zombie process warning penalty', now),
+        ('zombie_critical_penalty', 15, None, '僵尸进程危险扣分', 'Zombie process critical penalty', now),
+    ]
+
+    cur.executemany(
+        "INSERT OR IGNORE INTO server_thresholds (key, value, value_str, description_zh, description_en, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+        defaults
+    )
+
+    print(f"✅ 服务器巡检阈值配置初始化完成（插入/跳过 {cur.rowcount} 行）")
+    conn.commit()
+    conn.close()
 
 
 if __name__ == '__main__':

@@ -379,6 +379,7 @@ class RemoteSystemInfoCollector:
                 'top_processes': self.get_top_processes(),
                 'open_files': self.get_open_files(),
                 'docker': self.get_docker_info(),
+                'zombie_count': 0,
                 'hostname': '',
                 'platform': '',
                 'kernel': '',
@@ -409,6 +410,13 @@ class RemoteSystemInfoCollector:
                     info['uptime_days'] = round(uptime_sec / 86400, 1)
                 except (ValueError, IndexError):
                     pass
+
+            # 僵尸进程检测
+            out, _ = self.exec_cmd("ps -eo stat 2>/dev/null | grep -c '^Z' || echo 0")
+            try:
+                info['zombie_count'] = int(out.strip())
+            except Exception:
+                pass
 
             return info
         finally:
@@ -632,6 +640,14 @@ class LocalSystemInfoCollector:
             except Exception:
                 pass
 
+        # 僵尸进程检测
+        zombie_count = 0
+        try:
+            if psutil:
+                zombie_count = sum(1 for p in psutil.process_iter() if p.status() == psutil.STATUS_ZOMBIE)
+        except Exception:
+            pass
+
         return {
             'cpu': self.get_cpu_info(),
             'memory': self.get_memory_info(),
@@ -639,6 +655,7 @@ class LocalSystemInfoCollector:
             'top_processes': self.get_top_processes(),
             'open_files': self.get_open_files(),
             'docker': self.get_docker_info(),
+            'zombie_count': zombie_count,
             'hostname': hostname,
             'platform': plat,
             'kernel': kernel,
@@ -659,53 +676,89 @@ class SystemInfoCollector:
 
 # ─── 健康评分 ─────────────────────────────────────────────────────────
 
+def load_server_thresholds(db_path='inspection.db'):
+    """
+    从 server_thresholds 表读取阈值，读取失败返回硬编码默认值。
+    """
+    defaults = {
+        'cpu_warning_pct': 70,      'cpu_critical_pct': 90,
+        'cpu_warning_penalty': 10,  'cpu_critical_penalty': 20,
+        'mem_warning_pct': 75,      'mem_critical_pct': 90,
+        'mem_warning_penalty': 10,  'mem_critical_penalty': 20,
+        'swap_warning_pct': 50,     'swap_warning_penalty': 10,
+        'disk_warning_pct': 80,     'disk_critical_pct': 90,
+        'disk_warning_penalty': 8,   'disk_critical_penalty': 15,
+        'inode_warning_pct': 80,    'inode_warning_penalty': 10,
+        'docker_unhealthy_penalty': 15,
+        'docker_all_stopped_penalty': 5,
+        'health_excellent_threshold': 90,
+        'health_good_threshold': 75,
+        'health_fair_threshold': 60,
+        'zombie_warning_count': 1,   'zombie_critical_count': 5,
+        'zombie_warning_penalty': 5, 'zombie_critical_penalty': 15,
+    }
+    try:
+        import sqlite3, os
+        path = db_path if os.path.isabs(db_path) else os.path.join(os.path.dirname(__file__), db_path)
+        conn = sqlite3.connect(path)
+        cur = conn.cursor()
+        cur.execute('SELECT key, value FROM server_thresholds')
+        for row in cur.fetchall():
+            defaults[row[0]] = row[1]
+        conn.close()
+    except Exception:
+        pass
+    return defaults
+
+
 def compute_health_score(info):
     """
     根据系统信息计算健康评分（0-100）和问题列表。
     返回 (score, status, issues)
     """
+    thresholds = load_server_thresholds()
     score = 100
     issues = []
 
     # CPU
     cpu = info.get('cpu', {})
     cpu_pct = cpu.get('usage_percent', 0)
-    if cpu_pct > 90:
-        score -= 20
-        issues.append(f"CPU 使用率过高 ({cpu_pct:.1f}% > 90%)")
-    elif cpu_pct > 70:
-        score -= 10
-        issues.append(f"CPU 使用率偏高 ({cpu_pct:.1f}% > 70%)")
+    if cpu_pct > thresholds.get('cpu_critical_pct', 90):
+        score -= thresholds.get('cpu_critical_penalty', 20)
+        issues.append(f"CPU 使用率过高 ({cpu_pct:.1f}% > {thresholds.get('cpu_critical_pct', 90):.0f}%)")
+    elif cpu_pct > thresholds.get('cpu_warning_pct', 70):
+        score -= thresholds.get('cpu_warning_penalty', 10)
+        issues.append(f"CPU 使用率偏高 ({cpu_pct:.1f}% > {thresholds.get('cpu_warning_pct', 70):.0f}%)")
 
     # 内存
     mem = info.get('memory', {})
     mem_pct = mem.get('usage_percent', 0)
-    if mem_pct > 90:
-        score -= 20
-        issues.append(f"内存使用率过高 ({mem_pct:.1f}% > 90%)")
-    elif mem_pct > 75:
-        score -= 10
-        issues.append(f"内存使用率偏高 ({mem_pct:.1f}% > 75%)")
+    if mem_pct > thresholds.get('mem_critical_pct', 90):
+        score -= thresholds.get('mem_critical_penalty', 20)
+        issues.append(f"内存使用率过高 ({mem_pct:.1f}% > {thresholds.get('mem_critical_pct', 90):.0f}%)")
+    elif mem_pct > thresholds.get('mem_warning_pct', 75):
+        score -= thresholds.get('mem_warning_penalty', 10)
+        issues.append(f"内存使用率偏高 ({mem_pct:.1f}% > {thresholds.get('mem_warning_pct', 75):.0f}%)")
 
     # Swap
     swap_pct = mem.get('swap_usage_percent', 0)
-    if swap_pct > 50:
-        score -= 10
-        issues.append(f"Swap 使用率过高 ({swap_pct:.1f}% > 50%)")
+    if swap_pct > thresholds.get('swap_warning_pct', 50):
+        score -= thresholds.get('swap_warning_penalty', 10)
+        issues.append(f"Swap 使用率过高 ({swap_pct:.1f}% > {thresholds.get('swap_warning_pct', 50):.0f}%)")
 
     # 磁盘（跳过 ISO/光盘挂载）
     for disk in info.get('disk', []):
         mp = disk.get('mountpoint', '/')
         fstype = disk.get('fstype', '')
         if _is_iso_mount(mp, fstype):
-            continue  # ISO 挂载不参与评分
+            continue
         pct = disk.get('usage_percent', 0)
-        if pct > 90:
-            score -= 15
-            issues.append(f"磁盘 {mp} 使用率危险 ({pct:.1f}% > 90%)")
-        elif pct > 80:
-            score -= 8
-            issues.append(f"磁盘 {mp} 使用率偏高 ({pct:.1f}% > 80%)")
+        if pct > thresholds.get('disk_critical_pct', 90):
+            score -= thresholds.get('disk_critical_penalty', 15)
+            issues.append(f"磁盘 {mp} 使用率危险 ({pct:.1f}% > {thresholds.get('disk_critical_pct', 90):.0f}%)")
+        elif pct > thresholds.get('disk_warning_pct', 80):
+            score -= thresholds.get('disk_warning_penalty', 8)
+            issues.append(f"磁盘 {mp} 使用率偏高 ({pct:.1f}% > {thresholds.get('disk_warning_pct', 80):.0f}%)")
 
     # inode（跳过 ISO/光盘挂载）
     for disk in info.get('disk', []):
@@ -714,8 +767,8 @@ def compute_health_score(info):
         if _is_iso_mount(mp, fstype):
             continue
         inode_pct = disk.get('inode_usage_percent', 0)
-        if inode_pct > 80:
-            score -= 10
+        if inode_pct > thresholds.get('inode_warning_pct', 80):
+            score -= thresholds.get('inode_warning_penalty', 10)
             issues.append(f"inode {mp} 使用率偏高 ({inode_pct:.1f}%)")
 
     # Docker 容器健康检查
@@ -723,25 +776,33 @@ def compute_health_score(info):
     if docker.get('available'):
         unhealthy = docker.get('unhealthy', [])
         if unhealthy:
-            score -= 15
+            score -= thresholds.get('docker_unhealthy_penalty', 15)
             names = ', '.join([u['name'] for u in unhealthy[:3]])
             if len(unhealthy) > 3:
                 names += f' 等{len(unhealthy)}个'
             issues.append(f"Docker 存在不健康容器 ({names})")
-        # 运行容器数 vs 总容器数（警告过多停止的容器）
         total = docker.get('total_count', 0)
         running = docker.get('running_count', 0)
         if total > 0 and running == 0:
-            score -= 5
+            score -= thresholds.get('docker_all_stopped_penalty', 5)
             issues.append(f"Docker 容器全部未运行（共{total}个容器）")
+
+    # 僵尸进程
+    zombie_count = info.get('zombie_count', 0)
+    if zombie_count >= thresholds.get('zombie_critical_count', 5):
+        score -= thresholds.get('zombie_critical_penalty', 15)
+        issues.append(f"发现 {zombie_count} 个僵尸进程（≥{thresholds.get('zombie_critical_count', 5):.0f} 个，危险）")
+    elif zombie_count >= thresholds.get('zombie_warning_count', 1):
+        score -= thresholds.get('zombie_warning_penalty', 5)
+        issues.append(f"发现 {zombie_count} 个僵尸进程（≥{thresholds.get('zombie_warning_count', 1):.0f} 个，警告）")
 
     score = max(0, min(100, score))
 
-    if score >= 90:
+    if score >= thresholds.get('health_excellent_threshold', 90):
         status = '优秀'
-    elif score >= 75:
+    elif score >= thresholds.get('health_good_threshold', 75):
         status = '良好'
-    elif score >= 60:
+    elif score >= thresholds.get('health_fair_threshold', 60):
         status = '一般'
     else:
         status = '需关注'
@@ -1155,12 +1216,13 @@ def generate_server_report(info, output_dir=None):
 
     # ── 第4章：其他信息 ──
     doc.add_heading('4. 其他系统信息', level=1)
-    t = doc.add_table(rows=3, cols=2)
+    t = doc.add_table(rows=4, cols=2)
     t.style = 'Table Grid'
     rows_data = [
         ('启动时间', info.get('boot_time', '')),
         ('运行天数', f"{info.get('uptime_days', 0)} 天"),
         ('打开文件描述符', str(info.get('open_files', {}))),
+        ('僵尸进程数量', str(info.get('zombie_count', 0))),
     ]
     for i, (label, value) in enumerate(rows_data):
         t.rows[i].cells[0].text = label
