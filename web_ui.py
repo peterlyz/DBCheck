@@ -1897,6 +1897,63 @@ def api_force_reset_baselines():
         return jsonify({'success': False, 'message': str(e)})
 
 
+
+# ── 服务器巡检阈值 API ──────────────
+@app.route('/api/server_thresholds', methods=['GET'])
+def api_get_server_thresholds():
+    """获取服务器巡检阈值配置"""
+    try:
+        import sqlite3, os
+        db_path = os.path.join(os.path.dirname(__file__), 'inspection.db')
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        cur.execute('SELECT key, value, value_str, description_zh, description_en FROM server_thresholds ORDER BY key')
+        rows = cur.fetchall()
+        conn.close()
+        data = []
+        for r in rows:
+            data.append({
+                'key': r['key'],
+                'value': r['value'],
+                'value_str': r['value_str'],
+                'description_zh': r['description_zh'],
+                'description_en': r['description_en'],
+            })
+        return jsonify({'success': True, 'data': data})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
+@app.route('/api/server_thresholds', methods=['POST'])
+def api_save_server_thresholds():
+    """保存服务器巡检阈值配置（批量更新）"""
+    try:
+        import sqlite3, os, datetime
+        db_path = os.path.join(os.path.dirname(__file__), 'inspection.db')
+        items = request.get_json(force=True)
+        if not isinstance(items, list):
+            return jsonify({'success': False, 'message': '请求数据必须是数组'}), 400
+
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        for item in items:
+            k = item.get('key')
+            v = item.get('value')
+            if k is None:
+                continue
+            cur.execute(
+                'UPDATE server_thresholds SET value=?, updated_at=? WHERE key=?',
+                (v, now, k)
+            )
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'message': '服务器阈值配置已保存'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
 # ── 巡检模板 API ───────────────────────────────────────────
 
 @app.route('/api/inspection/templates', methods=['GET'])

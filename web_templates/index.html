@@ -3994,6 +3994,9 @@ function formatBytes(bytes) {
       <span class="icon">📋</span> <span data-i18n="webui.nav_inspection_config">巡检配置管理</span>
     </div>
     <div class="nav-item" onclick="showPage('baseline-config')" id="nav-baseline-config">
+    <div class="nav-item" onclick="showPage('server-thresholds')" id="nav-server-thresholds">
+      <span class="icon">⚙️</span> <span data-i18n="server_thresholds.title">服务器阈值配置</span>
+    </div>
       <span class="icon">📏</span> <span data-i18n="baseline.management_title">基线配置管理</span>
     </div>
 
@@ -5812,6 +5815,31 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
       </div>
 
       <!-- ═══ 实时监控：实时慢查询 ═══ -->
+      <!-- 服务器阈值配置页面 -->
+      <div class="page" id="page-server-thresholds" style="display:none;">
+        <div class="page-header">
+          <h2 data-i18n="server_thresholds.title">服务器阈值配置</h2>
+          <p class="page-sub" data-i18n="server_thresholds.desc" style="color:var(--text-muted);margin:4px 0 0">配置服务器健康评分阈值</p>
+        </div>
+        <div class="page-toolbar">
+          <div></div>
+          <button class="btn btn-primary btn-sm" onclick="saveServerThresholds()" data-i18n="webui.save">保存</button>
+        </div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table class="data-table" id="server-thresholds-table">
+            <thead>
+              <tr>
+                <th data-i18n="">描述</th>
+                <th data-i18n="server_thresholds.value">当前值</th>
+                <th data-i18n="">说明</th>
+              </tr>
+            </thead>
+            <tbody id="server-thresholds-tbody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="page" id="page-monitor-slow" style="display:none;">
         <div class="page-header mon-page-header">
           <div class="mon-page-title-row">
@@ -6282,6 +6310,7 @@ function applyI18N() {
     const _titles = {
     'inspection-config': ['巡检配置管理', '管理数据库巡检模板、章节和 SQL 查询'],
     'baseline-config':   ['基线配置管理',   '配置和管理数据库基线检查参数'],
+    'server-thresholds': ['服务器阈值配置', '配置服务器健康评分阈值'],
     'monitor-slow':     ['实时慢查询',     '定时拉取各数据源 Top SQL'],
     'monitor-conn':     ['活跃连接监控',   '实时查看各数据源连接数'],
     };
@@ -6424,6 +6453,7 @@ function showPage(name) {
     'remote-shell': [i18n('webui.nav_remote_shell') || '远程终端', i18n('webui.nav_remote_shell_desc') || 'SSH 远程终端'],
     'inspection-config': [i18n('webui.nav_inspection_config') || '巡检配置管理', '管理数据库巡检模板、章节和 SQL 查询'],
     'baseline-config': [i18n('baseline.management_title') || '基线配置管理', i18n('baseline.management_desc') || '配置和管理数据库基线检查参数'],
+    'server-thresholds': [i18n('server_thresholds.title') || '服务器阈值配置', i18n('server_thresholds.desc') || '配置服务器健康评分阈值'],
     shares: ['🔗 分享管理', '管理已生成的巡检报告分享链接'],
     'monitor-slow': [i18n('monitor.slow_title') || '实时慢查询', i18n('monitor.slow_desc') || '定时拉取各数据源 Top SQL'],
     'monitor-conn': [i18n('monitor.conn_title') || '活跃连接监控', i18n('monitor.conn_desc') || '实时查看各数据源连接数'],
@@ -6465,6 +6495,9 @@ function showPage(name) {
     }
     if (name === 'baseline-config') {
         loadBaselines();
+    }
+    if (name === 'server-thresholds') {
+        loadServerThresholds();
     }
   if (name === 'sql-editor') {
     loadSqlTree();
@@ -15827,6 +15860,7 @@ function mkdirRemote() {
       </div>
     </div>
 <script src="/static/js/baseline_config.js"></script>
+  <script src="/static/js/server_thresholds.js"></script>
 <!-- 底部状态栏 -->
 <div class="status-bar" id="status-bar">
   <div class="sb-item">
