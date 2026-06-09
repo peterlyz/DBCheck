@@ -834,10 +834,15 @@ ORACLE_DEFAULT_CHAPTERS = [
             {'key': 'tablespace_usage', 'sql': """
                 SELECT a.tablespace_name,
                        ROUND(a.total_space_mb, 2) AS total_mb,
+                       ROUND(a.max_space_mb, 2) AS max_mb,
                        ROUND(NVL(b.used_space_mb, 0), 2) AS used_mb,
-                       ROUND(a.total_space_mb - NVL(b.used_space_mb, 0), 2) AS free_mb,
-                       ROUND(NVL(b.used_space_mb, 0) * 100.0 / a.total_space_mb, 2) AS used_percent
-                FROM (SELECT tablespace_name, SUM(bytes) / 1024 / 1024 AS total_space_mb FROM dba_data_files GROUP BY tablespace_name) a
+                       ROUND(GREATEST(a.total_space_mb, a.max_space_mb) - NVL(b.used_space_mb, 0), 2) AS free_mb,
+                       ROUND(NVL(b.used_space_mb, 0) * 100.0 / GREATEST(a.total_space_mb, a.max_space_mb), 2) AS used_percent
+                FROM (SELECT tablespace_name,
+                             SUM(bytes) / 1024 / 1024 AS total_space_mb,
+                             SUM(CASE WHEN autoextensible = 'YES' THEN GREATEST(MAXBYTES, bytes) ELSE bytes END) / 1024 / 1024 AS max_space_mb
+                      FROM dba_data_files
+                      GROUP BY tablespace_name) a
                 LEFT JOIN (SELECT tablespace_name, SUM(bytes) / 1024 / 1024 AS used_space_mb FROM dba_segments GROUP BY tablespace_name) b
                 ON a.tablespace_name = b.tablespace_name
                 ORDER BY used_percent DESC;
@@ -1354,10 +1359,15 @@ ORACLE_11G_CHAPTERS = [
             {'key': 'tablespace_usage', 'sql': """
                 SELECT a.tablespace_name,
                        ROUND(a.total_space_mb, 2) AS total_mb,
+                       ROUND(a.max_space_mb, 2) AS max_mb,
                        ROUND(NVL(b.used_space_mb, 0), 2) AS used_mb,
-                       ROUND(a.total_space_mb - NVL(b.used_space_mb, 0), 2) AS free_mb,
-                       ROUND(NVL(b.used_space_mb, 0) * 100.0 / a.total_space_mb, 2) AS used_percent
-                FROM (SELECT tablespace_name, SUM(bytes) / 1024 / 1024 AS total_space_mb FROM dba_data_files GROUP BY tablespace_name) a
+                       ROUND(GREATEST(a.total_space_mb, a.max_space_mb) - NVL(b.used_space_mb, 0), 2) AS free_mb,
+                       ROUND(NVL(b.used_space_mb, 0) * 100.0 / GREATEST(a.total_space_mb, a.max_space_mb), 2) AS used_percent
+                FROM (SELECT tablespace_name,
+                             SUM(bytes) / 1024 / 1024 AS total_space_mb,
+                             SUM(CASE WHEN autoextensible = 'YES' THEN GREATEST(MAXBYTES, bytes) ELSE bytes END) / 1024 / 1024 AS max_space_mb
+                      FROM dba_data_files
+                      GROUP BY tablespace_name) a
                 LEFT JOIN (SELECT tablespace_name, SUM(bytes) / 1024 / 1024 AS used_space_mb FROM dba_segments GROUP BY tablespace_name) b
                 ON a.tablespace_name = b.tablespace_name
                 ORDER BY used_percent DESC;

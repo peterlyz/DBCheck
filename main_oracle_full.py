@@ -945,6 +945,7 @@ def oracle_check_tablespace(conn):
     cur = conn.cursor()
     try:
         # 永久表空间：dba_tablespaces LEFT JOIN dba_data_files LEFT JOIN dba_free_space
+        # pct_used 考虑可扩展空间：分母用 GREATEST(curr_mb, max_mb)
         cur.execute("""
             SELECT t.tablespace_name,
                    t.status,
@@ -953,7 +954,7 @@ def oracle_check_tablespace(conn):
                    ROUND(NVL(df.curr_mb,0) - NVL(fs.free_mb,0), 2) used_mb,
                    ROUND(NVL(fs.free_mb,0), 2) free_mb,
                    ROUND((NVL(df.curr_mb,0) - NVL(fs.free_mb,0)) /
-                         NULLIF(NVL(df.curr_mb,0),0) * 100, 2) pct_used
+                         NULLIF(GREATEST(NVL(df.curr_mb,0), NVL(df.max_mb,0)), 0) * 100, 2) pct_used
             FROM dba_tablespaces t
             LEFT JOIN (SELECT tablespace_name,
                               SUM(bytes/1024/1024) curr_mb,
@@ -3750,7 +3751,7 @@ def oracle_check_tablespace_v19(conn):
                    ROUND(NVL(df.max_mb,0), 2) max_mb,
                    ROUND(NVL(seg.used_mb,0), 2) used_mb,
                    ROUND(NVL(df.curr_mb,0) - NVL(seg.used_mb,0), 2) free_mb,
-                   ROUND(NVL(seg.used_mb,0) / NULLIF(NVL(df.curr_mb,0),0) * 100, 2) pct_used
+                   ROUND(NVL(seg.used_mb,0) / NULLIF(GREATEST(NVL(df.curr_mb,0), NVL(df.max_mb,0)), 0) * 100, 2) pct_used
             FROM dba_tablespaces bt
             LEFT JOIN (SELECT tablespace_name,
                               SUM(bytes/1024/1024) curr_mb,
