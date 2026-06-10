@@ -1,5 +1,5 @@
 # DBCheck Release Script (simplified)
-# Usage: .\release.ps1 -Version "2.5.5"
+# Usage: .\release.ps1 -Version "2.5.6"
 # GitHub Actions will handle Docker build/push and GitHub Release automatically.
 
 param(
@@ -13,7 +13,7 @@ $ProjectRoot = Split-Path $MyInvocation.MyCommand.Path
 
 # Validate version format
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-    Write-Host "ERROR: Version must be x.y.z (e.g. 2.5.5)" -ForegroundColor Red
+    Write-Host "ERROR: Version must be x.y.z (e.g. 2.5.6)" -ForegroundColor Red
     exit 1
 }
 
