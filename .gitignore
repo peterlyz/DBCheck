@@ -35,8 +35,8 @@ dbdoctor_analysis.md
 mysql_inspector.lic
 *_plan.md
 # Pro runtime data
-pro_data/
+pro_data/*.*
 # Driver binaries (download from GitHub Releases, too large for Git)
 drivers/
 awr_uploads/
-data/
+data/*.db
