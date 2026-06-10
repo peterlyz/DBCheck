@@ -742,6 +742,20 @@
     box-shadow: 0 0 0 2px var(--primary-light);
 }
 
+/* 查看模式：只读查询详情 */
+.inline-edit-form.view-mode {
+    border-left: 3px solid var(--success);
+}
+
+.inline-edit-form.view-mode .form-input:disabled,
+.inline-edit-form.view-mode .form-textarea:disabled,
+.inline-edit-form.view-mode input[type="checkbox"]:disabled {
+    background: var(--bg);
+    color: var(--text-muted);
+    opacity: 0.85;
+    cursor: not-allowed;
+}
+
 /* ==================== 模板信息编辑区 ==================== */
 
 .inspection-template-info {
@@ -803,4 +817,41 @@
     outline: none;
     border-color: var(--primary);
     box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+/* ==================== 自定义滚动条 ==================== */
+/* WebKit 浏览器（Chrome / Edge / Safari） */
+.inspection-chapter-list-panel::-webkit-scrollbar,
+.inspection-chapter-detail-panel::-webkit-scrollbar {
+    width: 4px;
+}
+
+.inspection-chapter-list-panel::-webkit-scrollbar-thumb,
+.inspection-chapter-detail-panel::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+
+.inspection-chapter-list-panel::-webkit-scrollbar-track,
+.inspection-chapter-detail-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+/* Firefox */
+.inspection-chapter-list-panel,
+.inspection-chapter-detail-panel {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+/* 只读查看区 code/textarea 滚动条 */
+.inline-edit-form.view-mode textarea::-webkit-scrollbar {
+    width: 4px;
+}
+.inline-edit-form.view-mode textarea::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+.inline-edit-form.view-mode textarea::-webkit-scrollbar-track {
+    background: transparent;
 }

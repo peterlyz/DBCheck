@@ -136,6 +136,9 @@ async function loadInspectionTemplateDetail(templateId) {
         const data = await res.json();
         if (data.success) {
             fillInspectionTemplateEditForm(data.data);
+            // 清空右侧章节详情面板，防止状态残留
+            const detailContainer = document.getElementById('inspection-chapter-detail');
+            if (detailContainer) detailContainer.innerHTML = '<div class="empty-state">请点击左侧章节查看详情</div>';
             loadInspectionChapters(templateId);
         } else {
             toast(data.message || '加载模板详情失败', 'error');
@@ -151,8 +154,12 @@ function fillInspectionTemplateEditForm(template) {
     const versionEl = document.getElementById('inspection-edit-version');
     const descEl = document.getElementById('inspection-edit-desc');
     const defaultEl = document.getElementById('inspection-edit-default');
+    const addChapterBtn = document.getElementById('inspection-add-chapter-btn');
+    const saveTemplateBtn = document.getElementById('inspection-save-template-btn');
+    const exportBtn = document.querySelector('button[onclick="exportInspectionTemplate()"]');
     currentInspectionIsPreset = template.is_preset == 1;
-    if (dbTypeEl) dbTypeEl.value = template.db_type || '';
+    console.log('[DEBUG] template id=', template.id, 'is_preset=', template.is_preset, 'currentInspectionIsPreset=', currentInspectionIsPreset);
+    if (dbTypeEl) { dbTypeEl.value = template.db_type || ''; dbTypeEl.disabled = currentInspectionIsPreset; }
     if (nameEl) {
         nameEl.value = template.template_name || '';
         nameEl.readOnly = currentInspectionIsPreset;
@@ -163,8 +170,11 @@ function fillInspectionTemplateEditForm(template) {
         versionEl.readOnly = currentInspectionIsPreset;
         versionEl.disabled = currentInspectionIsPreset;
     }
-    if (descEl) descEl.value = template.description || '';
-    if (defaultEl) defaultEl.checked = template.is_default == 1;
+    if (descEl) { descEl.value = template.description || ''; descEl.readOnly = currentInspectionIsPreset; }
+    if (defaultEl) { defaultEl.checked = template.is_default == 1; defaultEl.disabled = currentInspectionIsPreset; }
+    if (addChapterBtn) addChapterBtn.style.display = currentInspectionIsPreset ? 'none' : '';
+    if (saveTemplateBtn) saveTemplateBtn.style.display = currentInspectionIsPreset ? 'none' : '';
+    if (exportBtn) exportBtn.style.display = currentInspectionIsPreset ? '' : 'none';
 }
 
 function clearInspectionTemplateEditForm() {
@@ -179,12 +189,22 @@ function clearInspectionTemplateEditForm() {
     if (descEl) descEl.value = '';
     if (defaultEl) defaultEl.checked = false;
     currentInspectionIsPreset = false;
+    const saveTemplateBtn = document.getElementById('inspection-save-template-btn');
+    const addChapterBtn = document.getElementById('inspection-add-chapter-btn');
+    const exportBtn = document.querySelector('button[onclick="exportInspectionTemplate()"]');
+    if (saveTemplateBtn) saveTemplateBtn.style.display = '';
+    if (addChapterBtn) addChapterBtn.style.display = '';
+    if (exportBtn) exportBtn.style.display = 'none';
     const chapterList = document.getElementById('inspection-chapter-list');
     if (chapterList) chapterList.innerHTML = '<div class="empty-state">暂无章节，请点击顶部"添加章节"按钮添加。</div>';
     clearInspectionChapterDetail();
 }
 
 async function saveInspectionTemplate() {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     const dbTypeEl = document.getElementById('inspection-edit-db-type');
     const nameEl = document.getElementById('inspection-edit-name');
     const versionEl = document.getElementById('inspection-edit-version');
@@ -253,6 +273,19 @@ async function loadInspectionChapters(templateId) {
         const data = await res.json();
         if (data.success) {
             renderInspectionChapters(data.data);
+            // 自动展开第一个章节，防止切换模板后右侧面板状态残留
+            if (data.data && data.data.length > 0) {
+                const firstId = data.data[0].id;
+                if (currentInspectionIsPreset === true) {
+                    viewInspectionChapterReadOnly(firstId);
+                } else {
+                    editInspectionChapter(firstId);
+                }
+            } else {
+                // 无章节时清空右侧面板
+                const detailContainer = document.getElementById('inspection-chapter-detail');
+                if (detailContainer) detailContainer.innerHTML = '<div class="empty-state">暂无章节，请点击顶部"添加章节"按钮添加。</div>';
+            }
         } else {
             toast(data.message || '加载章节列表失败', 'error');
         }
@@ -264,14 +297,22 @@ async function loadInspectionChapters(templateId) {
 function renderInspectionChapters(chapters) {
     const container = document.getElementById('inspection-chapter-list');
     if (!container) return;
+    const isPreset = currentInspectionIsPreset === true;
     if (!chapters || chapters.length === 0) {
         container.innerHTML = '<div class="empty-state">暂无章节，请点击顶部"添加章节"按钮添加。</div>';
         return;
     }
     let html = '<ul class="chapter-sortable">';
     chapters.forEach((ch, idx) => {
+        const clickAction = isPreset
+            ? `onclick="viewInspectionChapterReadOnly(${ch.id})"`
+            : `onclick="editInspectionChapter(${ch.id})"`;
+        const deleteBtn = isPreset ? '' : `
+            <div class="chapter-item-actions">
+                <button class="btn-delete-x" title="删除" onclick="event.stopPropagation(); deleteInspectionChapter(${ch.id}, '${escapeHtml(ch.chapter_title_zh)}')">✕</button>
+            </div>`;
         html += `
-        <li class="chapter-item" data-chapter-id="${ch.id}" onclick="editInspectionChapter(${ch.id})">
+        <li class="chapter-item" data-chapter-id="${ch.id}" ${clickAction}>
             <div class="chapter-info">
                 <span class="chapter-number">${ch.chapter_number}</span>
                 <div class="chapter-text">
@@ -280,36 +321,36 @@ function renderInspectionChapters(chapters) {
                 </div>
             </div>
             <span class="chapter-query-count">${ch.query_count || 0}</span>
-            <div class="chapter-item-actions">
-                <button class="btn-delete-x" title="删除" onclick="event.stopPropagation(); deleteInspectionChapter(${ch.id}, '${escapeHtml(ch.chapter_title_zh)}')">✕</button>
-            </div>
+            ${deleteBtn}
         </li>`;
     });
     html += '</ul>';
     container.innerHTML = html;
 
-    setTimeout(function() {
-        const listEl = container.querySelector('.chapter-sortable');
-        if (listEl && window.Sortable) {
-            try {
-                window._inspectionChapterSortable = new Sortable(listEl, {
-                    animation: 150,
-                    ghostClass: 'chapter-sortable-ghost',
-                    onEnd: function() {
-                        const items = listEl.querySelectorAll('[data-chapter-id]');
-                        const ids = Array.from(items).map(el => parseInt(el.getAttribute('data-chapter-id')));
-                        fetch('/api/inspection/chapters/reorder', {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({template_id: currentInspectionTemplateId, chapter_ids: ids})
-                        }).then(r => r.json()).then(d => {
-                            if (!d.success) toast('排序保存失败', 'error');
-                        }).catch(e => toast('排序保存失败: ' + e.message, 'error'));
-                    }
-                });
-            } catch(e) { /* ignore */ }
-        }
-    }, 100);
+    if (!isPreset) {
+        setTimeout(function() {
+            const listEl = container.querySelector('.chapter-sortable');
+            if (listEl && window.Sortable) {
+                try {
+                    window._inspectionChapterSortable = new Sortable(listEl, {
+                        animation: 150,
+                        ghostClass: 'chapter-sortable-ghost',
+                        onEnd: function() {
+                            const items = listEl.querySelectorAll('[data-chapter-id]');
+                            const ids = Array.from(items).map(el => parseInt(el.getAttribute('data-chapter-id')));
+                            fetch('/api/inspection/chapters/reorder', {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({template_id: currentInspectionTemplateId, chapter_ids: ids})
+                            }).then(r => r.json()).then(d => {
+                                if (!d.success) toast('排序保存失败', 'error');
+                            }).catch(e => toast('排序保存失败: ' + e.message, 'error'));
+                        }
+                    });
+                } catch(e) { /* ignore */ }
+            }
+        }, 100);
+    }
 }
 
 function addInspectionChapter() {
@@ -338,7 +379,42 @@ async function editInspectionChapter(chapterId) {
     }
 }
 
+async function viewInspectionChapterReadOnly(chapterId) {
+    try {
+        const res = await fetch(`/api/inspection/chapters/${chapterId}`);
+        const data = await res.json();
+        if (data.success) {
+            showInspectionChapterReadOnlyForm(data.data);
+        } else {
+            toast(data.message || '加载章节详情失败', 'error');
+        }
+    } catch (e) {
+        toast('加载章节详情失败: ' + e.message, 'error');
+    }
+}
+
+function showInspectionChapterReadOnlyForm(chapter) {
+    const detailContainer = document.getElementById('inspection-chapter-detail');
+    if (!detailContainer) return;
+    currentInspectionChapterId = chapter.id;
+    detailContainer.innerHTML = `
+        <div class="chapter-edit-form">
+            <div class="form-group"><label>章节序号</label><input type="number" class="form-input" value="${chapter.chapter_number || ''}" disabled readonly /></div>
+            <div class="form-group"><label>章节标题（中文）</label><input type="text" class="form-input" value="${escapeHtml(chapter.chapter_title_zh || '')}" disabled readonly /></div>
+            <div class="form-group"><label>章节标题（英文）</label><input type="text" class="form-input" value="${escapeHtml(chapter.chapter_title_en || '')}" disabled readonly /></div>
+            <div class="form-group"><label>章节描述</label><textarea class="form-textarea" disabled readonly>${escapeHtml(chapter.description || '')}</textarea></div>
+            <div class="form-group"><label><input type="checkbox" ${chapter.enabled != 0 ? 'checked' : ''} disabled /> 启用</label></div>
+            <div class="form-actions"><span style="color:#888;font-size:12px;">预置模板，仅可查看</span></div>
+        </div>
+        <div id="inspection-query-list"></div>`;
+    loadInspectionQueries(chapter.id);
+}
+
 function showInspectionChapterEditForm(chapter) {
+    if (currentInspectionIsPreset === true && chapter) {
+        showInspectionChapterReadOnlyForm(chapter);
+        return;
+    }
     const detailContainer = document.getElementById('inspection-chapter-detail');
     if (!detailContainer) return;
     if (chapter) {
@@ -370,6 +446,10 @@ function showInspectionChapterEditForm(chapter) {
 }
 
 async function saveInspectionChapter() {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     const numberEl = document.getElementById('inspection-chapter-number');
     const titleZhEl = document.getElementById('inspection-chapter-title-zh');
     const titleEnEl = document.getElementById('inspection-chapter-title-en');
@@ -418,6 +498,10 @@ async function saveInspectionChapter() {
 }
 
 async function deleteInspectionChapter(chapterId, chapterTitle) {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     const confirmed = await showConfirmDialog('确认删除', `确定要删除章节"${chapterTitle}"吗？相关的 SQL 查询也会被删除。`);
     if (!confirmed) return;
     try {
@@ -466,25 +550,38 @@ async function loadInspectionQueries(chapterId) {
 function renderInspectionQueries(queries) {
     const container = document.getElementById('inspection-query-list');
     if (!container) return;
+    const isPreset = currentInspectionIsPreset === true;
     if (!queries || queries.length === 0) {
-        container.innerHTML = '<div class="empty-state" style="margin-top:12px;">暂无 SQL 查询。</div><button class="btn btn-xs btn-primary" style="margin-top:8px;" onclick="addInspectionQuery()">添加查询</button>';
+        let html = '<div class="empty-state" style="margin-top:12px;">暂无 SQL 查询。</div>';
+        if (!isPreset) {
+            html += '<button class="btn btn-xs btn-primary" style="margin-top:8px;" onclick="addInspectionQuery()">添加查询</button>';
+        }
+        container.innerHTML = html;
         return;
     }
     let html = '<h4>SQL 查询列表</h4>';
-    html += '<button class="btn btn-xs btn-primary" onclick="addInspectionQuery()">添加查询</button>';
+    if (!isPreset) {
+        html += '<button class="btn btn-xs btn-primary" onclick="addInspectionQuery()">添加查询</button>';
+    }
     html += '<ul class="query-list">';
     queries.forEach(q => {
+        const sqlPreview = escapeHtmlForTemplate(q.query_sql.substring(0, 100)) + (q.query_sql.length > 100 ? '...' : '');
+        let actionsHtml = '';
+        if (isPreset) {
+            actionsHtml = `<button class="btn btn-xs btn-ghost" onclick="viewInspectionQuery(${q.id})">查看</button>`;
+        } else {
+            actionsHtml = `
+                <button class="btn btn-xs btn-ghost" onclick="editInspectionQueryInline(${q.id})">编辑</button>
+                <button class="btn btn-xs btn-danger" onclick="deleteInspectionQuery(${q.id}, '${escapeHtml(q.query_key)}')">删除</button>`;
+        }
         html += `
         <li class="query-item" data-query-id="${q.id}">
             <div class="query-item-header">
                 <span class="query-key">${escapeHtml(q.query_key)}</span>
                 <span class="query-enabled">${q.enabled ? '✅' : '❌'}</span>
-                <div class="query-item-actions">
-                    <button class="btn btn-xs btn-ghost" onclick="editInspectionQueryInline(${q.id})">编辑</button>
-                    <button class="btn btn-xs btn-danger" onclick="deleteInspectionQuery(${q.id}, '${escapeHtml(q.query_key)}')">删除</button>
-                </div>
+                <div class="query-item-actions">${actionsHtml}</div>
             </div>
-            <div class="query-sql-preview">${escapeHtmlForTemplate(q.query_sql.substring(0, 100))}${q.query_sql.length > 100 ? '...' : ''}</div>
+            <div class="query-sql-preview">${sqlPreview}</div>
             <div class="query-inline-edit" id="query-edit-${q.id}" style="display:none;"></div>
         </li>`;
     });
@@ -493,6 +590,10 @@ function renderInspectionQueries(queries) {
 }
 
 function addInspectionQuery() {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     if (!currentInspectionChapterId) {
         toast('请先选择一个章节', 'error');
         return;
@@ -510,6 +611,10 @@ function addInspectionQuery() {
 }
 
 async function editInspectionQueryInline(queryId) {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     if (inspectionQueryUnsaved) {
         const confirmed = await showConfirmDialog('未保存', '当前有未保存的修改，确定要放弃吗？');
         if (!confirmed) return;
@@ -612,6 +717,10 @@ function showInlineQueryForm(query) {
 }
 
 async function saveInspectionQueryInline(queryId, isNew) {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     const keyEl    = document.querySelector('.inline-q-key');
     const enabledEl = document.querySelector('.inline-q-enabled');
     const descZhEl = document.querySelector('.inline-q-desc-zh');
@@ -670,7 +779,50 @@ function cancelInspectionQueryInline(queryId) {
     loadInspectionQueries(currentInspectionChapterId);
 }
 
+async function viewInspectionQuery(queryId) {
+    document.querySelectorAll('.query-inline-edit').forEach(el => el.style.display = 'none');
+    document.querySelectorAll('.query-item-editing').forEach(el => el.classList.remove('query-item-editing'));
+    const editContainer = document.getElementById('query-edit-' + queryId);
+    if (!editContainer) return;
+    try {
+        const res = await fetch(`/api/inspection/queries/${queryId}`);
+        const data = await res.json();
+        if (data.success) {
+            renderQueryInlineViewForm(data.data, editContainer);
+            editContainer.style.display = 'block';
+            const li = editContainer.closest('.query-item');
+            if (li) li.classList.add('query-item-editing');
+        } else {
+            toast(data.message || '加载查询详情失败', 'error');
+        }
+    } catch (e) {
+        toast('加载查询详情失败: ' + e.message, 'error');
+    }
+}
+
+function renderQueryInlineViewForm(query, container) {
+    const q = query || {};
+    const key    = q.query_key    || '';
+    const sql    = q.query_sql    || '';
+    const descZh = q.query_description_zh || '';
+    const descEn = q.query_description_en || '';
+    const enabled = q.enabled !== 0;
+    let html = '<div class="inline-edit-form view-mode">';
+    html += `<div class="form-group"><label>查询键名</label><input type="text" class="form-input" value="${escapeHtml(key)}" disabled readonly /></div>`;
+    html += `<div class="form-group"><label>SQL 语句</label><textarea class="form-textarea" style="height:160px;font-family:monospace;" disabled readonly>${escapeHtmlForTemplate(sql)}</textarea></div>`;
+    html += `<div class="form-group"><label>描述（中文）</label><input type="text" class="form-input" value="${escapeHtml(descZh)}" disabled readonly /></div>`;
+    html += `<div class="form-group"><label>描述（英文）</label><input type="text" class="form-input" value="${escapeHtml(descEn)}" disabled readonly /></div>`;
+    html += `<div class="form-group"><label><input type="checkbox" ${enabled ? 'checked' : ''} disabled /> 启用</label></div>`;
+    html += '<div class="form-actions"><button class="btn btn-sm" onclick="this.closest(\'.query-inline-edit\').style.display=\'none\'">关闭</button></div>';
+    html += '</div>';
+    container.innerHTML = html;
+}
+
 async function deleteInspectionQuery(queryId, queryKey) {
+    if (currentInspectionIsPreset) {
+        toast('预置模板不可修改', 'error');
+        return;
+    }
     const confirmed = await showConfirmDialog('确认删除', `确定要删除查询"${queryKey}"吗？`);
     if (!confirmed) return;
     try {
@@ -779,3 +931,6 @@ window.editInspectionQueryInline = editInspectionQueryInline;
 window.deleteInspectionQuery = deleteInspectionQuery;
 window.exportInspectionTemplate = exportInspectionTemplate;
 window.importInspectionTemplate = importInspectionTemplate;
+window.viewInspectionChapterReadOnly = viewInspectionChapterReadOnly;
+window.showInspectionChapterReadOnlyForm = showInspectionChapterReadOnlyForm;
+window.viewInspectionQuery = viewInspectionQuery;
