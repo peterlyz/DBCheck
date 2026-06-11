@@ -4,6 +4,47 @@ All notable changes to DBCheck will be documented in this file.
 
 ---
 
+## [v2.5.8] - 2026-06-11
+
+### 🐛 Bug Fixes
+
+- **服务器巡检 - Windows 磁盘信息采集为空**
+  - `psutil.disk_usage()` 在 psutil 5.9.0 + Windows 上有 bug，会抛 `SystemError`
+  - 改用 `shutil.disk_usage()` 替代，它是标准库，跨平台且稳定
+  - 修复后 Windows 本机巡检能正常采集 C:\ 和 D:\ 的磁盘信息
+
+---
+
+## [v2.5.7] - 2026-06-09
+
+### 🐛 Bug Fixes
+
+- **巡检配置管理 - 新建模板添加章节时无法添加查询** (#12)
+  - 新章节表单中缺少查询列表容器和「添加查询」按钮
+  - 修复后新建章节时可以直接添加查询语句
+
+- **数据库文件整理**
+  - 将 `inspection.db` 和 `inspection_config.db` 从项目根目录移动到 `data/` 目录
+  - 更新所有代码中的数据库路径引用
+
+- **巡检配置管理 - 预置模板只读查看** (#13)
+  - 预置模板改为只读模式，只能查看不能修改
+  - 非预置模板保持完全可编辑
+  - 切换模板时重置右侧面板状态，避免显示旧模板的内容
+  - 修复查询列表查看按钮的样式问题
+
+- **服务器阈值配置生效**
+  - 修复 `load_server_thresholds()` 默认路径指向旧的 `inspection.db`（项目根目录）
+  - 改为使用绝对路径指向 `data/inspection.db`
+  - 修复后 Web UI 配置的阈值能正确应用到服务器巡检评分
+
+### 📝 Documentation
+
+- 服务器巡检报告增加「阈值配置参考」章节（Word 报告和 HTML 分享报告）
+- 展示当前使用的阈值配置（CPU/内存/磁盘/Swap/僵尸进程/Docker 的警告阈值、危险阈值、扣分值）
+
+---
+
 ## [v2.5.3] - 2026-06-07
 
 ### 📊 New: Oracle AWR Report Analysis
