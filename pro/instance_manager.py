@@ -517,6 +517,16 @@ class InstanceManager:
                 except ImportError as e:
                     return {'ok': False, 'message': f'yasdb 驱动未安装: {str(e)}'}
 
+            elif db_type == 'kingbase':
+                import psycopg2
+                conn = psycopg2.connect(
+                    host=inst.host, port=inst.port,
+                    user=inst.user, password=password,
+                    dbname=inst.database or 'kingbase', connect_timeout=10,
+                )
+                conn.close()
+                return {'ok': True, 'message': '连接成功 (KingbaseES %s:%d)' % (inst.host, inst.port)}
+
             else:
                 return {'ok': False, 'message': '不支持的数据库类型: %s' % db_type}
 

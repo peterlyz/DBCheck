@@ -1273,6 +1273,7 @@ body { padding-bottom: 32px !important; }
 .tag-tidb    { background: rgba(76,175,80,.12); color: #4caf50; }
 .tag-ivorysql { background: rgba(51,103,145,.12); color: #336791; }
 .tag-yashandb { background: rgba(156,39,176,.12); color: #9c27b0; }
+.tag-kingbase { background: rgba(220,20,60,.12); color: #dc143c; }
 
 /* ─── Responsive ─── */
 /* ─── 响应式断点 ─── */
@@ -3443,7 +3444,7 @@ function formatBytes(bytes) {
               return;
             }
             listEl.innerHTML = list.map(ds => {
-              const dbIcons = {mysql:'🐬', pg:'🐘', oracle:'🔴', dm:'🟡', sqlserver:'🟠', tidb:'🟢', ivorysql:'🐘'};
+              const dbIcons = {mysql:'🐬', pg:'🐘', oracle:'🔴', dm:'🟡', sqlserver:'🟠', tidb:'🟢', ivorysql:'🐘', kingbase:'🐘'};
               const icon = dbIcons[ds.db_type] || '🗄️';
               const tagClass = 'tag-' + (ds.db_type === 'oracle' ? 'oracle' : ds.db_type === 'sqlserver' ? 'sqlserver' : ds.db_type);
               const groupLabel = ds.group || 'default';
@@ -3599,6 +3600,7 @@ function formatBytes(bytes) {
                   '<option value="tidb">TiDB</option>' +
                   '<option value="ivorysql">IvorySQL</option>' +
                   '<option value="yashandb">YashanDB</option>' +
+                  '<option value="kingbase">KingbaseES</option>' +
                 '</select></div>' +
               '<div><label style="font-size:12px;color:var(--text-muted)">' + i18n('webui.pro_ds_label_req') + '</label>' +
                 '<input id="ds-label" style="width:100%;margin-top:4px;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px" placeholder="' + i18n('webui.pro_ds_placeholder_name') + '"></div>' +
@@ -3673,8 +3675,8 @@ function formatBytes(bytes) {
       let _editSshPassword = '';
       function onDsDbTypeChange() {
         const dbType = document.getElementById('ds-db-type').value;
-        const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5432, yashandb:1688};
-        const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres', yashandb:'sys'};
+        const portMap = {mysql:3306, pg:5432, dm:5236, oracle:1521, sqlserver:1433, tidb:4000, ivorysql:5432, yashandb:1688, kingbase:54321};
+        const userMap = {mysql:'root', pg:'postgres', dm:'SYSDBA', oracle:'system', sqlserver:'sa', tidb:'root', ivorysql:'postgres', yashandb:'sys', kingbase:'kingbase'};
         document.getElementById('ds-port').value = portMap[dbType] || 3306;
         const userEl = document.getElementById('ds-user');
         // 类型改变时强制更新用户名
@@ -3682,7 +3684,7 @@ function formatBytes(bytes) {
           userEl.value = userMap[dbType] || 'root';
         }
         _currentDbType = dbType;
-        document.getElementById('ds-database-wrap').style.display = (dbType === 'pg' || dbType === 'ivorysql') ? '' : 'none';
+        document.getElementById('ds-database-wrap').style.display = (dbType === 'pg' || dbType === 'ivorysql' || dbType === 'kingbase') ? '' : 'none';
         document.getElementById('ds-service-wrap').style.display = dbType === 'oracle' ? '' : 'none';
         document.getElementById('ds-sysdba-wrap').style.display = dbType === 'oracle' ? '' : 'none';
       }
@@ -3710,7 +3712,9 @@ function formatBytes(bytes) {
         if (!password) password = _editDsPassword;
         const user = document.getElementById('ds-user').value.trim();
         const svcName = document.getElementById('ds-service-name')?.value || '';
-        const dbName = document.getElementById('ds-database')?.value || '';
+        let dbName = (document.getElementById('ds-database')?.value || '').trim();
+        if (!dbName && (dbType === 'pg' || dbType === 'ivorysql')) dbName = 'postgres';
+        if (!dbName && dbType === 'kingbase') dbName = 'kingbase';
         const sysdba = document.getElementById('ds-sysdba')?.checked || false;
         const sshHost = document.getElementById('ds-ssh-host')?.value || '';
         const sshPort = document.getElementById('ds-ssh-port')?.value || 22;
@@ -3754,7 +3758,7 @@ function formatBytes(bytes) {
         payload.ssh_user = sshOn ? document.getElementById('ds-ssh-user').value.trim() : '';
         payload.ssh_password = sshOn ? (document.getElementById('ds-ssh-password').value || undefined) : '';
         payload.ssh_key_file = sshOn ? document.getElementById('ds-ssh-key').value.trim() : '';
-        if (payload.db_type === 'pg' || payload.db_type === 'ivorysql') payload.database = document.getElementById('ds-database').value.trim();
+        if (payload.db_type === 'pg' || payload.db_type === 'ivorysql' || payload.db_type === 'kingbase') payload.database = document.getElementById('ds-database').value.trim();
         if (payload.db_type === 'oracle') {
           payload.service_name = document.getElementById('ds-service-name').value.trim();
           payload.sysdba = document.getElementById('ds-sysdba').checked;
@@ -3818,6 +3822,9 @@ function formatBytes(bytes) {
               document.getElementById('ds-group').value = ds.group || 'default';
               if (ds.db_type === 'pg' || ds.db_type === 'ivorysql') {
                 document.getElementById('ds-database').value = ds.database || 'postgres';
+              }
+              if (ds.db_type === 'kingbase') {
+                document.getElementById('ds-database').value = ds.database || 'kingbase';
               }
               if (ds.db_type === 'oracle') {
                 document.getElementById('ds-service-name').value = ds.service_name || '';
@@ -4373,6 +4380,14 @@ function formatBytes(bytes) {
               </div>
               <div class="tc-name-row"><span data-i18n="webui.db_yashandb_name">YashanDB</span><span class="beta-tag">Beta</span></div>
               <div class="tc-desc" data-i18n="webui.db_yashandb_desc">适用于崖山 YashanDB V23+ 实例，采集会话、锁、表空间、SQL 性能等核心指标。</div>
+            </div>
+            <div class="type-card" id="tc-kingbase" onclick="selectDbType('kingbase')">
+              <div class="tc-header">
+                <div class="tc-logo"><span style="font-size:32px">🐘</span></div>
+                <div class="tc-check" id="chk-kingbase"></div>
+              </div>
+              <div class="tc-name" data-i18n="webui.db_kingbase_name">KingbaseES</div>
+              <div class="tc-desc" data-i18n="webui.db_kingbase_desc">适用于北京人大金仓 KingbaseES V8+ 实例，基于 PostgreSQL 兼容模式，复用 PG 巡检模板。</div>
             </div>
           </div>
           <div class="btn-row">
@@ -5459,6 +5474,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
                 <option value="tidb">TiDB</option>
                 <option value="ivorysql">IvorySQL</option>
                 <option value="yashandb">YashanDB</option>
+                <option value="kingbase">KingbaseES</option>
                 <option value="all">全部类型</option>
               </select>
             </div>
@@ -5546,6 +5562,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <option value="tidb">TiDB</option>
               <option value="ivorysql">IvorySQL</option>
               <option value="yashandb">YashanDB</option>
+              <option value="kingbase">KingbaseES</option>
             </select>
           </div>
           <div id="rules-list" style="margin-top:12px;">
@@ -5725,6 +5742,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
                     <option value="dm8">DM</option>
                     <option value="tidb">TiDB</option>
                     <option value="ivorysql">IvorySQL</option>
+                    <option value="kingbase">KingbaseES</option>
                   </select>
                 </div>
                 <div class="form-group" style="flex:0 0 auto;">
@@ -5779,6 +5797,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <option value="postgresql">PostgreSQL</option>
               <option value="ivorysql">IvorySQL</option>
               <option value="yashandb">YashanDB</option>
+              <option value="kingbase">KingbaseES</option>
               <option value="sqlserver">SQL Server</option>
               <option value="tidb">TiDB</option>
             </select>
@@ -6536,7 +6555,7 @@ async function dmLoadFiles() {
         ? '<span class="badge" style="background:var(--success);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">正常</span>'
         : '<span class="badge" style="background:var(--danger);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;">缺失</span>';
       return `<tr>
-        <td style="font-family:monospace;font-size:12px;">${escHtml(f.file)}</td>
+        <td style="font-family:monospace;font-size:12px;">${escHtml(f.path)}</td>
         <td>${escHtml(f.name)}</td>
         <td>${escHtml(f.category)}</td>
         <td style="text-align:right;">${escHtml(f.size_fmt || '—')}</td>
@@ -7022,6 +7041,7 @@ async function selectDbType(type, skipReload) {
   document.getElementById('tc-tidb').classList.toggle('selected', type === 'tidb');
   document.getElementById('tc-ivorysql').classList.toggle('selected', type === 'ivorysql');
   document.getElementById('tc-yashandb').classList.toggle('selected', type === 'yashandb');
+  document.getElementById('tc-kingbase').classList.toggle('selected', type === 'kingbase');
   document.getElementById('chk-mysql').textContent = type === 'mysql' ? '✓' : '';
   document.getElementById('chk-pg').textContent   = type === 'pg'    ? '✓' : '';
   document.getElementById('chk-dm').textContent = type === 'dm' ? '✓' : '';
@@ -7031,18 +7051,26 @@ async function selectDbType(type, skipReload) {
   document.getElementById('chk-tidb').textContent = type === 'tidb' ? '✓' : '';
   document.getElementById('chk-ivorysql').textContent = type === 'ivorysql' ? '✓' : '';
   document.getElementById('chk-yashandb').textContent = type === 'yashandb' ? '✓' : '';
+  document.getElementById('chk-kingbase').textContent = type === 'kingbase' ? '✓' : '';
   // 默认端口 & 用户名
-  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432, yashandb: 1688 };
-  const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres', yashandb: 'sys' };
+  const portMap = { mysql: 3306, pg: 5432, dm: 5236, oracle: 1521, sqlserver: 1433, tidb: 4000, ivorysql: 5432, yashandb: 1688, kingbase: 54321 };
+  const userMap = { mysql: 'root', pg: 'postgres', dm: 'SYSDBA', oracle: 'system', sqlserver: 'sa', tidb: 'root', ivorysql: 'postgres', yashandb: 'sys', kingbase: 'kingbase' };
   document.getElementById('f-port').value = portMap[type] || 3306;
   document.getElementById('f-user').value = userMap[type] || 'root';
-  document.getElementById('f-database-wrap').style.display = (type === 'pg' || type === 'ivorysql') ? '' : 'none';
+  document.getElementById('f-database-wrap').style.display = (type === 'pg' || type === 'ivorysql' || type === 'kingbase') ? '' : 'none';
   // Oracle全面巡检：显示服务名输入框
   var svcWrap = document.getElementById('f-service-wrap');
   if (svcWrap) svcWrap.style.display = type === 'oracle' ? '' : 'none';
   // Oracle全面巡检：显示 SYSDBA 复选框
   var sysdbaWrap = document.getElementById('f-sysdba-wrap');
   if (sysdbaWrap) sysdbaWrap.style.display = type === 'oracle' ? '' : 'none';
+  // 更新数据库名称输入框的 placeholder 并自动填写默认值
+  const defaultDbMap = { pg: 'postgres', ivorysql: 'postgres', kingbase: 'kingbase' };
+  var fDbEl = document.getElementById('f-database');
+  if (fDbEl) {
+    fDbEl.placeholder = '默认 ' + (defaultDbMap[type] || '');
+    if (defaultDbMap[type]) fDbEl.value = defaultDbMap[type];
+  }
 }
 
 // ─── 加载巡检模板列表到指定下拉框 ───
@@ -7111,7 +7139,7 @@ async function testDb() {
         port:     parseInt(document.getElementById('f-port').value) || (dbType==='oracle'?1521:(dbType==='mysql'?3306:5432)),
         user:     document.getElementById('f-user').value.trim(),
         password: document.getElementById('f-password').value,
-        database: (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('f-database').value.trim() || 'postgres') : (document.getElementById('f-database').value.trim() || ''),
+        database: (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('f-database').value.trim() || 'postgres') : (dbType === 'kingbase') ? (document.getElementById('f-database').value.trim() || 'kingbase') : (document.getElementById('f-database').value.trim() || ''),
         service_name: document.getElementById('f-service-name') ? document.getElementById('f-service-name').value.trim() : null,
         sysdba: document.getElementById('f-sysdba').checked,
       })
@@ -7214,7 +7242,7 @@ async function testJobDb() {
       port:     parseInt(document.getElementById('job-port').value) || (portDefaults[dbType]||3306),
       user:     document.getElementById('job-user').value.trim(),
       password: document.getElementById('job-password').value,
-      database: (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('job-database').value.trim() || 'postgres') : '',
+      database: (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('job-database').value.trim() || 'postgres') : (dbType === 'kingbase') ? (document.getElementById('job-database').value.trim() || 'kingbase') : '',
     };
     if (dbType === 'oracle') {
       body.service_name = document.getElementById('job-service-name').value.trim() || null;
@@ -7526,7 +7554,7 @@ async function startInspection() {
   const port = parseInt(document.getElementById('f-port').value) || (dbType==='mysql'?3306:dbType==='oracle'?1521:dbType==='dm'?5236:dbType==='ivorysql'?5432:5432);
   const user = document.getElementById('f-user').value.trim() || (userDefaults[dbType]||'root');
   const password = document.getElementById('f-password').value;
-  const database = (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('f-database').value.trim() || 'postgres') : (document.getElementById('f-database').value.trim() || '');
+  const database = (dbType === 'pg' || dbType === 'ivorysql') ? (document.getElementById('f-database').value.trim() || 'postgres') : (dbType === 'kingbase') ? (document.getElementById('f-database').value.trim() || 'kingbase') : (document.getElementById('f-database').value.trim() || '');
   const svcName = document.getElementById('f-service-name') ? document.getElementById('f-service-name').value.trim() : null;
   const inspector = document.getElementById('f-inspector').value.trim() || 'Jack';
 
@@ -9278,7 +9306,7 @@ async function onJobDbTypeChange() {
     dm: 5236, sqlserver: 1433, tidb: 4000, yashandb: 1688
   };
   portInput.value = defaultPorts[dbType] || 3306;
-  dbWrap.style.display = (dbType === 'pg' || dbType === 'ivorysql' || dbType === 'sqlserver') ? 'block' : 'none';
+  dbWrap.style.display = (dbType === 'pg' || dbType === 'ivorysql' || dbType === 'sqlserver' || dbType === 'kingbase') ? 'block' : 'none';
   // Oracle: show service name and SYSDBA fields
   var jobSvcWrap = document.getElementById('job-service-wrap');
   if (jobSvcWrap) jobSvcWrap.style.display = dbType === 'oracle' ? 'block' : 'none';
@@ -9398,7 +9426,7 @@ async function onJobDatasourceChange() {
       document.getElementById('job-user').value = ds.user || '';
       document.getElementById('job-password').value = ds.password || '';
       document.getElementById('job-database').value = ds.database || '';
-      document.getElementById('job-database-wrap').style.display = (ds.db_type === 'pg' || ds.db_type === 'ivorysql' || ds.db_type === 'sqlserver') ? 'block' : 'none';
+      document.getElementById('job-database-wrap').style.display = (ds.db_type === 'pg' || ds.db_type === 'ivorysql' || ds.db_type === 'sqlserver' || ds.db_type === 'kingbase') ? 'block' : 'none';
       // Oracle: show service/SYSDBA fields and fill values
       var jobSvcWrap = document.getElementById('job-service-wrap');
       var jobSysdbaWrap = document.getElementById('job-sysdba-wrap');
@@ -15784,6 +15812,7 @@ function mkdirRemote() {
                 <option value="postgresql">PostgreSQL</option>
                 <option value="ivorysql">IvorySQL</option>
                 <option value="yashandb">YashanDB</option>
+                <option value="kingbase">KingbaseES</option>
                 <option value="sqlserver">SQL Server</option>
                 <option value="tidb">TiDB</option>
               </select>

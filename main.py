@@ -138,6 +138,11 @@ def _run_yashandb():
     main_yashandb.main()
 
 
+def _run_kingbase():
+    import main_kingbase
+    main_kingbase.main()
+
+
 def _run_oracle_full():
     """Oracle 全面巡检（增强版，基于 OS 层 + 数据库层）"""
     import main_oracle_full
@@ -164,6 +169,7 @@ def _run_inspect_menu():
         print(f"  {CYAN}7{RESET}. {t('cli.inspect_menu_line7')}")
         print(f"  {MAGENTA}8{RESET}. {t('cli.inspect_menu_line8')}")
         print(f"  {YELLOW}9{RESET}. {t('cli.inspect_menu_line9')}")
+        print(f"  {GREEN}10{RESET}. {t('cli.inspect_menu_line10')}")
         print(f"  {DIM}0{RESET}. {t('cli.inspect_menu_line0')}")
         print(f"{DIM}{'='*50}{RESET}")
         choice = input(t("cli.inspect_menu_prompt")).strip()
@@ -193,6 +199,9 @@ def _run_inspect_menu():
             print(f"\n{t('cli.main_menu_yashandb_starting')}\n")
             _run_yashandb()
         elif choice == '9':
+            print(f"\n{t('cli.main_menu_kingbase_starting')}\n")
+            _run_kingbase()
+        elif choice == '10':
             _run_template_menu()
         elif choice in ('0', ''):
             break

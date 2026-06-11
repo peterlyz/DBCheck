@@ -1790,6 +1790,9 @@ def get_config_baseline(db_type, conn):
         return check_tidb_config_baseline(conn)
     elif db_type == 'yashandb':
         return check_yashandb_config_baseline(conn)
+    elif db_type == 'kingbase':
+        # KingbaseES 基于 PostgreSQL，复用 PG 基线检查
+        return check_pg_config_baseline(conn)
     else:
         return None
 
@@ -2540,5 +2543,89 @@ def _get_default_baselines():
             'risk_level': 'MEDIUM',
             'description_zh': 'UNDO 保留时间（秒），建议不低于 900',
             'description_en': 'Undo retention (seconds), recommended >= 900',
+        },
+
+        # ── PostgreSQL ─────────────────────────────────────────────
+        {
+            'db_type': 'pg', 'param_name': 'max_connections',
+            'query_sql': "SHOW max_connections;",
+            'operator': '>=', 'expected_value': '200',
+            'risk_level': 'MEDIUM',
+            'description_zh': '最大连接数，建议不低于 200',
+            'description_en': 'Max connections, recommended >= 200',
+        },
+        {
+            'db_type': 'pg', 'param_name': 'shared_buffers',
+            'query_sql': "SHOW shared_buffers;",
+            'operator': '>=', 'expected_value': '134217728',
+            'risk_level': 'MEDIUM',
+            'description_zh': '共享缓冲区大小（字节），建议不低于 128MB',
+            'description_en': 'Shared buffers size (bytes), recommended >= 128MB',
+        },
+        {
+            'db_type': 'pg', 'param_name': 'effective_cache_size',
+            'query_sql': "SHOW effective_cache_size;",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'LOW',
+            'description_zh': '有效缓存大小（字节），建议不低于 512MB',
+            'description_en': 'Effective cache size (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'pg', 'param_name': 'maintenance_work_mem',
+            'query_sql': "SHOW maintenance_work_mem;",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'LOW',
+            'description_zh': '维护工作内存（字节），建议不低于 512MB',
+            'description_en': 'Maintenance work memory (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'pg', 'param_name': 'autovacuum',
+            'query_sql': "SHOW autovacuum;",
+            'operator': '=', 'expected_value': 'on',
+            'risk_level': 'HIGH',
+            'description_zh': '自动清理应开启（autovacuum=on）',
+            'description_en': 'Autovacuum should be enabled (autovacuum=on)',
+        },
+
+        # ── KingbaseES（复用 PG 基线）────────────────────────
+        {
+            'db_type': 'kingbase', 'param_name': 'max_connections',
+            'query_sql': "SHOW max_connections;",
+            'operator': '>=', 'expected_value': '200',
+            'risk_level': 'MEDIUM',
+            'description_zh': '最大连接数，建议不低于 200',
+            'description_en': 'Max connections, recommended >= 200',
+        },
+        {
+            'db_type': 'kingbase', 'param_name': 'shared_buffers',
+            'query_sql': "SHOW shared_buffers;",
+            'operator': '>=', 'expected_value': '134217728',
+            'risk_level': 'MEDIUM',
+            'description_zh': '共享缓冲区大小（字节），建议不低于 128MB',
+            'description_en': 'Shared buffers size (bytes), recommended >= 128MB',
+        },
+        {
+            'db_type': 'kingbase', 'param_name': 'effective_cache_size',
+            'query_sql': "SHOW effective_cache_size;",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'LOW',
+            'description_zh': '有效缓存大小（字节），建议不低于 512MB',
+            'description_en': 'Effective cache size (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'kingbase', 'param_name': 'maintenance_work_mem',
+            'query_sql': "SHOW maintenance_work_mem;",
+            'operator': '>=', 'expected_value': '536870912',
+            'risk_level': 'LOW',
+            'description_zh': '维护工作内存（字节），建议不低于 512MB',
+            'description_en': 'Maintenance work memory (bytes), recommended >= 512MB',
+        },
+        {
+            'db_type': 'kingbase', 'param_name': 'autovacuum',
+            'query_sql': "SHOW autovacuum;",
+            'operator': '=', 'expected_value': 'on',
+            'risk_level': 'HIGH',
+            'description_zh': '自动清理应开启（autovacuum=on）',
+            'description_en': 'Autovacuum should be enabled (autovacuum=on)',
         },
     ]

@@ -1499,7 +1499,7 @@ class AIAdvisor:
                 oracle_extra += f"\n[Top SQL by Buffer Gets]\n{metrics['top_sql_top5']}"
 
         if lang == 'zh':
-            db_type_name = {'mysql': 'MySQL', 'pg': 'PostgreSQL', 'oracle': 'Oracle', 'sqlserver': 'SQL Server', 'tidb': 'TiDB', 'ivorysql': 'IvorySQL'}.get(db_type, db_type.upper())
+            db_type_name = {'mysql': 'MySQL', 'pg': 'PostgreSQL', 'oracle': 'Oracle', 'sqlserver': 'SQL Server', 'tidb': 'TiDB', 'ivorysql': 'IvorySQL', 'kingbase': 'KingbaseES'}.get(db_type, db_type.upper())
             prompt = f"""你是一位拥有20年经验的 {db_type_name} 数据库资深DBA，擅长数据库性能分析及优化，对 {db_type_name} 的配置参数体系特别熟悉。你的诊断需要结合官方文档及下方提供的 RAG 参考文档，充分考虑当前数据库版本特性，给出适合当前版本的专业建议（例如：在 MySQL 8.0 中 expire_logs_days 已被弃用，应建议使用 binlog_expire_logs_seconds 替代）。以下是对 {db_type_name} 数据库「{label}」的全面巡检结果，请进行深度诊断。
 
 {sep}
@@ -2164,6 +2164,15 @@ def smart_analyze_yashandb(context: dict) -> list:
     return smart_analyze_dm(context)
 
 
+def smart_analyze_kingbase(context: dict) -> list:
+    """
+    对 KingbaseES 巡检结果执行风险规则分析。
+    KingbaseES 兼容 PostgreSQL 协议，复用 PG 规则。
+    """
+    # 复用 PostgreSQL 的风险规则
+    return smart_analyze_pg(context)
+
+
 # ═══════════════════════════════════════════════════════
 #  5. 综合分析入口（供 main_mysql.py / main_pg.py 调用）
 # ═══════════════════════════════════════════════════════
@@ -2206,6 +2215,8 @@ def run_full_analysis(db_type: str, host: str, port, label: str,
         issues = smart_analyze_ivorysql(context)
     elif db_type == 'yashandb':
         issues = smart_analyze_yashandb(context)
+    elif db_type == 'kingbase':
+        issues = smart_analyze_kingbase(context)
     else:
         issues = []  # 未知类型，返回空列表
 

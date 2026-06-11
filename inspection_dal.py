@@ -167,11 +167,11 @@ def init_database(db_path: str = None):
         conn.commit()
 
         conn.commit()
-        print("✅ 数据库初始化成功")
+        print("[OK] 数据库初始化成功")
         
     except Exception as e:
         conn.rollback()
-        print(f"❌ 数据库初始化失败: {e}")
+        print(f"[FAIL] 数据库初始化失败: {e}")
         raise
     finally:
         conn.close()
@@ -1800,11 +1800,11 @@ def init_default_baselines(db_path: str = None):
                        bl['description_zh'], bl['description_en']))
 
         conn.commit()
-        print("✅ 默认基线配置初始化成功")
+        print("[OK] 默认基线配置初始化成功")
 
     except Exception as e:
         conn.rollback()
-        print(f"❌ 默认基线配置初始化失败: {e}")
+        print(f"[FAIL] 默认基线配置初始化失败: {e}")
         raise
     finally:
         conn.close()
@@ -1843,13 +1843,13 @@ def force_reset_baselines(db_type: str = None, db_path: str = None):
 
         conn.commit()
         if db_type:
-            print(f"✅ {db_type} 基线配置已重置")
+            print(f"[OK] {db_type} 基线配置已重置")
         else:
-            print("✅ 所有基线配置已重置")
+            print("[OK] 所有基线配置已重置")
 
     except Exception as e:
         conn.rollback()
-        print(f"❌ 基线配置重置失败: {e}")
+        print(f"[FAIL] 基线配置重置失败: {e}")
         raise
     finally:
         conn.close()
@@ -1894,4 +1894,4 @@ if __name__ == '__main__':
     template_config = export_template(template_id)
     print(f"导出模板成功: {json.dumps(template_config, ensure_ascii=False, indent=2)}")
     
-    print("✅ 测试完成")
+    print("[OK] 测试完成")

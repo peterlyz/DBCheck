@@ -847,7 +847,7 @@ def main():
         sys.exit(1)
     
     if args.port is None:
-        defaults = {'mysql': 3306, 'pg': 5432, 'oracle': 1521, 'sqlserver': 1433, 'dm': 5236, 'tidb': 4000, 'ivorysql': 5432}
+        defaults = {'mysql': 3306, 'pg': 5432, 'oracle': 1521, 'sqlserver': 1433, 'dm': 5236, 'tidb': 4000, 'ivorysql': 5432, 'kingbase': 54321}
         args.port = defaults.get(args.type, 3306)
 
     db_info = {
@@ -873,7 +873,7 @@ def main():
             'ssh_key_file': args.ssh_key or '',
         }
 
-    type_labels = {'mysql': 'MySQL', 'pg': 'PostgreSQL', 'oracle': 'Oracle', 'sqlserver': 'SQL Server', 'dm': 'DM8', 'tidb': 'TiDB', 'ivorysql': 'IvorySQL'}
+    type_labels = {'mysql': 'MySQL', 'pg': 'PostgreSQL', 'oracle': 'Oracle', 'sqlserver': 'SQL Server', 'dm': 'DM8', 'tidb': 'TiDB', 'ivorysql': 'IvorySQL', 'kingbase': 'KingbaseES'}
     print(f"\n[{type_labels.get(args.type, args.type)}] 开始巡检: {args.label} ({args.host}:{args.port})")
     print("-" * 50)
 

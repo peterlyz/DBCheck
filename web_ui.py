@@ -142,7 +142,7 @@ socketio = SocketIO(cors_allowed_origins='*', async_mode='gevent')
 
 # ── 本地模块 ──────────────────────────────────────────────
 try:
-    import main_mysql, main_pg, main_dm, main_oracle_full, main_sqlserver, main_tidb, main_ivorysql
+    import main_mysql, main_pg, main_dm, main_oracle_full, main_sqlserver, main_tidb, main_ivorysql, main_kingbase
 except ImportError:
     main_mysql = main_pg = main_dm = main_oracle_full = main_sqlserver = main_tidb = main_ivorysql = None
 
@@ -337,6 +337,12 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
         socketio.emit('error', {'msg': '缺少数据库类型'}, room=task_id)
         return
 
+    # KingbaseES 数据库名修正：若未设置或为 postgres（从 PG 复制而来），则改为 kingbase
+    if db_type == 'kingbase':
+        _db = db_info.get('database') or ''
+        if _db in ('', 'postgres'):
+            db_info['database'] = 'kingbase'
+
     task_configs = {
         'mysql': dict(
             module_name='main_mysql',
@@ -422,6 +428,23 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
             err_module_key='webui.err_ivorysql_module',
             label_default='unknown',
             db_name_default='ivorysql',
+        ),
+        'kingbase': dict(
+            module_name='main_kingbase',
+            connect_test=test_kingbase_connection,
+            connect_test_args=lambda info: [info['ip'], info['port'], info['user'], info['password'], info.get('database', 'kingbase')],
+            getdata_args=lambda info: ([info['ip'], info['port'], info['user'], info['password']],
+                                       {'ssh_info': {}, 'template_id': template_id, 'database': info.get('database', 'kingbase')}),
+            conn_attr='conn_db2',
+            smart_analyze='smart_analyze_kingbase',
+            filename_key='webui.kingbase_report_filename',
+            history_db_type='kingbase',
+            instance_prefix='kingbase',
+            error_task_name='KingbaseES',
+            log_start_key='webui.log_kingbase_start',
+            err_module_key='webui.err_kingbase_module',
+            label_default='unknown',
+            db_name_default='kingbase',
         ),
         'dm': dict(
             module_name='main_dm',
@@ -712,7 +735,7 @@ def run_config_task(task_id, db_info, output_format='txt'):
                 charset='utf8mb4'
             )
             db_label = 'MySQL'
-        elif db_type in ('pg', 'ivorysql'):
+        elif db_type in ('pg', 'ivorysql', 'kingbase'):
             import psycopg2
             conn = psycopg2.connect(
                 host=db_info['host'], port=int(db_info['port']),
@@ -792,7 +815,7 @@ def run_index_task(task_id, db_info, output_format='txt'):
                 charset='utf8mb4'
             )
             db_label = 'MySQL'
-        elif db_type in ('pg', 'ivorysql'):
+        elif db_type in ('pg', 'ivorysql', 'kingbase'):
             import psycopg2
             conn = psycopg2.connect(
                 host=db_info['host'], port=int(db_info['port']),
@@ -898,6 +921,24 @@ def test_pg_connection(host, port, user, password, database='postgres'):
         return True, f"PostgreSQL {ver}"
     except Exception as e:
         return False, str(e)
+
+def test_kingbase_connection(host, port, user, password, database='kingbase'):
+    """测试 KingbaseES 连接（使用 psycopg2，与 PostgreSQL 协议兼容）"""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(
+            host=host, port=int(port), user=user, password=password,
+            database=database, connect_timeout=10
+        )
+        cur = conn.cursor()
+        cur.execute('SELECT version();')
+        ver = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return True, f"KingbaseES {ver}"
+    except Exception as e:
+        return False, str(e)
+
 
 def test_ivorysql_connection(host, port, user, password, database='postgres'):
     """测试 IvorySQL 连接（使用 psycopg2，与 PostgreSQL 协议兼容）"""
@@ -1599,6 +1640,9 @@ def api_test_db():
     elif db_type == 'ivorysql':
         ok, msg = test_ivorysql_connection(data['host'], data['port'], data['user'], data['password'], data.get('database', 'postgres'))
         result = {'ok': ok, 'msg': msg}
+    elif db_type == 'kingbase':
+        ok, msg = test_kingbase_connection(data['host'], data['port'], data['user'], data['password'], data.get('database', 'kingbase'))
+        result = {'ok': ok, 'msg': msg}
     elif db_type == 'yashandb':
         ok, msg = test_yashandb_connection(data['host'], data['port'], data['user'], data['password'])
         result = {'ok': ok, 'msg': msg}
@@ -1762,6 +1806,7 @@ def api_start_inspection():
             'sqlserver':  run_inspection_task,
             'tidb':       run_inspection_task,
             'ivorysql':   run_inspection_task,
+            'kingbase':   run_inspection_task,
         }.get(db_type, run_inspection_task), args=(task_id, db_info, inspector_name, template_id))
         t.daemon = True
         t.start()
@@ -3909,9 +3954,9 @@ def api_pro_datasources_test_conn():
             import pymysql
             conn = pymysql.connect(host=host, port=port, user=user, password=password, connect_timeout=10)
             conn.close()
-        elif db_type in ('pg', 'postgresql', 'ivorysql'):
+        elif db_type in ('pg', 'postgresql', 'ivorysql', 'kingbase'):
             import psycopg2
-            db = data.get('database', 'postgres')
+            db = data.get('database', 'postgres' if db_type != 'kingbase' else 'kingbase')
             conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname=db, connect_timeout=10)
             conn.close()
         elif db_type == 'oracle':
@@ -4169,10 +4214,12 @@ def api_ds_databases(ds_id):
             cur.execute("SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA ORDER BY SCHEMA_NAME")
             databases = [r[0] for r in cur.fetchall()]
             conn.close()
-        elif db_type in ('postgresql', 'ivorysql'):
+        elif db_type in ('postgresql', 'ivorysql', 'kingbase'):
             import psycopg2
+            # kingbase 默认库名为 kingbase，PG/IvorySQL 为 postgres
+            _pg_default_db = 'kingbase' if db_type == 'kingbase' else 'postgres'
             conn = psycopg2.connect(host=host, port=port, user=user, password=pwd,
-                                    dbname='postgres', connect_timeout=timeout)
+                                    dbname=_pg_default_db, connect_timeout=timeout)
             cur = conn.cursor()
             cur.execute("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
             databases = [r[0] for r in cur.fetchall()]
@@ -4274,7 +4321,7 @@ def api_ds_objects(ds_id):
                 elif row[1] == 'VIEW':
                     views.append(row[0])
             conn.close()
-        elif db_type in ('postgresql', 'ivorysql'):
+        elif db_type in ('postgresql', 'ivorysql', 'kingbase'):
             import psycopg2
             conn = psycopg2.connect(host=host, port=port, user=user, password=pwd,
                                     dbname=database, connect_timeout=timeout)
@@ -4523,7 +4570,7 @@ def api_execute_sql():
             rows = cursor.fetchmany(200)
             has_more = len(rows) >= 200
 
-        elif db_type in ('postgresql', 'ivorysql'):
+        elif db_type in ('postgresql', 'ivorysql', 'kingbase'):
             import psycopg2
             db_name = database or 'postgres'
             conn = psycopg2.connect(
@@ -5843,7 +5890,7 @@ def execute_simple_query(db_info: dict, db_type: str, scope: str) -> str:
             cur.close()
             conn.close()
 
-        elif db_type in ('pg', 'ivorysql'):
+        elif db_type in ('pg', 'ivorysql', 'kingbase'):
             import psycopg2
             conn = psycopg2.connect(
                 host=db_info.get('host', ''),
@@ -6734,7 +6781,7 @@ def api_home_stats():
             result['rule_builtin_count'] = len(engine.builtin_rules)
             result['rule_custom_count'] = len(engine.custom_rules)
             # 按 db_type 统计
-            db_types = ['mysql', 'postgresql', 'pg', 'oracle', 'dm8', 'dm', 'sqlserver', 'tidb', 'ivorysql', 'yashandb']
+            db_types = ['mysql', 'postgresql', 'pg', 'oracle', 'dm8', 'dm', 'sqlserver', 'tidb', 'ivorysql', 'yashandb', 'kingbase']
             rule_by_db = {}
             for dt in db_types:
                 rules_for_db = engine.list_rules(db_type=dt)
