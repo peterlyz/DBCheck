@@ -40,3 +40,4 @@ pro_data/*.*
 drivers/
 awr_uploads/
 data/*.db
+commit_msg.txt

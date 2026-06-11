@@ -482,27 +482,35 @@ class LocalSystemInfoCollector:
         if not psutil:
             return []
         try:
+            import shutil
             disk_list = []
-            partitions = psutil.disk_partitions()
+            try:
+                partitions = psutil.disk_partitions(all=False)
+            except TypeError:
+                partitions = psutil.disk_partitions()
             for partition in partitions:
                 mp = partition.mountpoint
-                fstype = partition.fstype or ''
-                # 过滤 loop 设备和 ISO/光盘挂载点
-                if fstype and 'loop' not in partition.device and not _is_iso_mount(mp, fstype):
-                    try:
-                        usage = psutil.disk_usage(mp)
-                        disk_list.append({
-                            'device': partition.device,
-                            'mountpoint': mp,
-                            'fstype': partition.fstype,
-                            'total_gb': round(usage.total / (1024**3), 2),
-                            'used_gb': round(usage.used / (1024**3), 2),
-                            'free_gb': round(usage.free / (1024**3), 2),
-                            'usage_percent': usage.percent,
-                            'inode_usage_percent': 0.0,
-                        })
-                    except PermissionError:
-                        continue
+                fstype = (partition.fstype or '').strip()
+                if _is_iso_mount(mp, fstype):
+                    continue
+                if 'loop' in (partition.device or ''):
+                    continue
+                try:
+                    # Windows: psutil 5.9.0 有 bug，disk_usage() 会抛 SystemError
+                    # 用 shutil.disk_usage() 替代，它跨平台且稳定
+                    usage = shutil.disk_usage(mp)
+                    disk_list.append({
+                        'device': partition.device,
+                        'mountpoint': mp,
+                        'fstype': partition.fstype or '',
+                        'total_gb': round(usage.total / (1024**3), 2),
+                        'used_gb': round(usage.used / (1024**3), 2),
+                        'free_gb': round(usage.free / (1024**3), 2),
+                        'usage_percent': round(usage.used / usage.total * 100, 1) if usage.total else 0,
+                        'inode_usage_percent': 0.0,
+                    })
+                except Exception:
+                    continue
             return disk_list
         except Exception:
             return []
@@ -676,10 +684,13 @@ class SystemInfoCollector:
 
 # ─── 健康评分 ─────────────────────────────────────────────────────────
 
-def load_server_thresholds(db_path='inspection.db'):
+def load_server_thresholds(db_path=None):
     """
     从 server_thresholds 表读取阈值，读取失败返回硬编码默认值。
     """
+    import os, sqlite3
+    if db_path is None:
+        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'inspection.db')
     defaults = {
         'cpu_warning_pct': 70,      'cpu_critical_pct': 90,
         'cpu_warning_penalty': 10,  'cpu_critical_penalty': 20,
@@ -698,7 +709,6 @@ def load_server_thresholds(db_path='inspection.db'):
         'zombie_warning_penalty': 5, 'zombie_critical_penalty': 15,
     }
     try:
-        import sqlite3, os
         path = db_path if os.path.isabs(db_path) else os.path.join(os.path.dirname(__file__), db_path)
         conn = sqlite3.connect(path)
         cur = conn.cursor()
@@ -1141,6 +1151,80 @@ def generate_server_report(info, output_dir=None):
         doc.add_paragraph('发现的问题：')
         for issue in issues:
             doc.add_paragraph(f'• {issue}')
+
+    # ── 阈值配置参考 ──
+    thresholds = load_server_thresholds()
+    doc.add_heading('1.1 阈值配置参考', level=2)
+    doc.add_paragraph('以下阈值用于健康评分计算，可在 Web UI「服务器阈值配置」中调整。')
+
+    th_table = doc.add_table(rows=10, cols=4)
+    th_table.style = 'Table Grid'
+    th_hdrs = ['检查项', '警告阈值', '危险阈值', '扣分']
+    for i, h in enumerate(th_hdrs):
+        th_table.rows[0].cells[i].text = h
+
+    th_rows = [
+        ('CPU 使用率',
+         f"{thresholds.get('cpu_warning_pct', 70)}%",
+         f"{thresholds.get('cpu_critical_pct', 90)}%",
+         f"-{thresholds.get('cpu_warning_penalty', 10)} / -{thresholds.get('cpu_critical_penalty', 20)}"),
+        ('内存使用率',
+         f"{thresholds.get('mem_warning_pct', 75)}%",
+         f"{thresholds.get('mem_critical_pct', 90)}%",
+         f"-{thresholds.get('mem_warning_penalty', 10)} / -{thresholds.get('mem_critical_penalty', 20)}"),
+        ('Swap 使用率',
+         f"{thresholds.get('swap_warning_pct', 50)}%",
+         '-',
+         f"-{thresholds.get('swap_warning_penalty', 10)}"),
+        ('磁盘使用率',
+         f"{thresholds.get('disk_warning_pct', 80)}%",
+         f"{thresholds.get('disk_critical_pct', 90)}%",
+         f"-{thresholds.get('disk_warning_penalty', 8)} / -{thresholds.get('disk_critical_penalty', 15)}"),
+        ('inode 使用率',
+         f"{thresholds.get('inode_warning_pct', 80)}%",
+         '-',
+         f"-{thresholds.get('inode_warning_penalty', 10)}"),
+        ('僵尸进程数量',
+         f"≥{thresholds.get('zombie_warning_count', 1)} 个",
+         f"≥{thresholds.get('zombie_critical_count', 5)} 个",
+         f"-{thresholds.get('zombie_warning_penalty', 5)} / -{thresholds.get('zombie_critical_penalty', 15)}"),
+        ('Docker 不健康容器',
+         '任意',
+         '-',
+         f"-{thresholds.get('docker_unhealthy_penalty', 15)}"),
+        ('Docker 全部停止',
+         'total>0 & running=0',
+         '-',
+         f"-{thresholds.get('docker_all_stopped_penalty', 5)}"),
+    ]
+    for ri, (name, warn, crit, penalty) in enumerate(th_rows, 1):
+        th_table.rows[ri].cells[0].text = name
+        th_table.rows[ri].cells[1].text = warn
+        th_table.rows[ri].cells[2].text = crit
+        th_table.rows[ri].cells[3].text = penalty
+
+    # 健康等级划分
+    doc.add_paragraph()
+    p = doc.add_paragraph('健康等级划分：')
+    p.runs[0].font.bold = True
+    grade_table = doc.add_table(rows=4, cols=3)
+    grade_table.style = 'Table Grid'
+    for i, h in enumerate(['等级', '分数范围', '说明']):
+        grade_table.rows[0].cells[i].text = h
+    grade_rows = [
+        ('优秀', f"≥ {thresholds.get('health_excellent_threshold', 90)} 分", '系统运行良好，无明显风险'),
+        ('良好', f"{thresholds.get('health_good_threshold', 75)} – {thresholds.get('health_excellent_threshold', 90)-1} 分", '存在轻微问题，建议关注'),
+        ('一般', f"{thresholds.get('health_fair_threshold', 60)} – {thresholds.get('health_good_threshold', 75)-1} 分", '存在明显问题，需要处理'),
+    ]
+    for ri, (grade, score_range, desc) in enumerate(grade_rows, 1):
+        grade_table.rows[ri].cells[0].text = grade
+        grade_table.rows[ri].cells[1].text = score_range
+        grade_table.rows[ri].cells[2].text = desc
+    # 补充「需关注」一行
+    row_cells = grade_table.add_row().cells
+    row_cells[0].text = '需关注'
+    row_cells[1].text = f"< {thresholds.get('health_fair_threshold', 60)} 分"
+    row_cells[2].text = '问题严重，需要立即处理'
 
     # ── 第2章：系统资源 ──
     doc.add_heading('2. 系统资源检查', level=1)
@@ -1725,6 +1809,23 @@ def generate_server_share_html(result, output_dir=None):
             icon, color, label = '➖', '#8b949e', '未安装'
         service_rows += f'<tr><td>{esc_html(s["name"])}</td><td style="color:{color}">{icon} {label}</td></tr>'
 
+    # 阈值配置
+    thresholds = load_server_thresholds()
+    threshold_rows = [
+        ('CPU 使用率', f"{thresholds.get('cpu_warning_pct', 70)}%", f"{thresholds.get('cpu_critical_pct', 90)}%", f"-{thresholds.get('cpu_warning_penalty', 10)} / -{thresholds.get('cpu_critical_penalty', 20)}"),
+        ('内存使用率', f"{thresholds.get('mem_warning_pct', 75)}%", f"{thresholds.get('mem_critical_pct', 90)}%", f"-{thresholds.get('mem_warning_penalty', 10)} / -{thresholds.get('mem_critical_penalty', 20)}"),
+        ('Swap 使用率', f"{thresholds.get('swap_warning_pct', 50)}%", '-', f"-{thresholds.get('swap_warning_penalty', 10)}"),
+        ('磁盘使用率', f"{thresholds.get('disk_warning_pct', 80)}%", f"{thresholds.get('disk_critical_pct', 90)}%", f"-{thresholds.get('disk_warning_penalty', 8)} / -{thresholds.get('disk_critical_penalty', 15)}"),
+        ('inode 使用率', f"{thresholds.get('inode_warning_pct', 80)}%", '-', f"-{thresholds.get('inode_warning_penalty', 10)}"),
+        ('僵尸进程', f"≥{thresholds.get('zombie_warning_count', 1)} 个", f"≥{thresholds.get('zombie_critical_count', 5)} 个", f"-{thresholds.get('zombie_warning_penalty', 5)} / -{thresholds.get('zombie_critical_penalty', 15)}"),
+        ('Docker 不健康', '任意', '-', f"-{thresholds.get('docker_unhealthy_penalty', 15)}"),
+        ('Docker 全停', 'total>0 & running=0', '-', f"-{thresholds.get('docker_all_stopped_penalty', 5)}"),
+    ]
+    threshold_html = '<div class="section"><h2>📋 阈值配置参考</h2><p style="color:#8b949e;font-size:12px;margin-bottom:12px">以下阈值用于健康评分计算，可在 Web UI「服务器阈值配置」中调整。</p><table><tr><th>检查项</th><th>警告阈值</th><th>危险阈值</th><th>扣分</th></tr>'
+    for name, warn, crit, penalty in threshold_rows:
+        threshold_html += f'<tr><td>{name}</td><td>{warn}</td><td>{crit}</td><td>{penalty}</td></tr>'
+    threshold_html += '</table></div>'
+
     # 问题列表
     issues_html = ''
     if issues:
@@ -1819,6 +1920,8 @@ def generate_server_share_html(result, output_dir=None):
   </div>
 
   {issues_html}
+
+  {threshold_html}
 
   <div class="section">
     <h2>📊 系统资源</h2>
