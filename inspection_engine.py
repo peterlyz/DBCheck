@@ -296,6 +296,8 @@ class BaseInspectionEngine:
         self.db_type = None  # 子类必须设置！
         self.output_file = None
         self.template_file = None
+        self._safe_errors = []  # 记录安全跳过的章节及原因
+        self._query_errors = {}  # {q_key: 友好错误描述}，渲染时使用
         
         try:
             from i18n import get_lang, t as _t
@@ -304,6 +306,29 @@ class BaseInspectionEngine:
         except Exception:
             self._lang = 'zh'
             self._t = lambda x, **kw: x  # 备用：直接返回键名
+    
+    @staticmethod
+    def _classify_sql_error(item_name, err_str):
+        """将 SQL 执行错误分类为友好描述"""
+        err_lower = err_str.lower()
+        if 'invalid object name' in err_lower or '42s02' in err_lower or 'does not exist' in err_lower:
+            return f'⚠️ 章节「{item_name}」：所需表/视图不存在（功能未配置），已跳过'
+        if 'permission' in err_lower or 'denied' in err_lower or '42501' in err_lower:
+            return f'⚠️ 章节「{item_name}」：权限不足，无法查询，已跳过'
+        if 'connection' in err_lower or 'communic' in err_lower:
+            return f'⚠️ 章节「{item_name}」：数据库连接已断开，已跳过'
+        return f'⚠️ 章节「{item_name}」：查询失败（{err_str[:80]}），已跳过'
+
+    @staticmethod
+    def _clean_xml_str(v, max_len=200):
+        """清理字符串中的 XML 不兼容控制字符（如 \x00 等）"""
+        if v is None:
+            return ''
+        s = str(v)[:max_len]
+        # 去掉 XML 不兼容的控制字符（ASCII 0-31，保留 \t \n \r）
+        allowed = {'\t', '\n', '\r'}
+        s = ''.join(c for c in s if ord(c) >= 32 or c in allowed)
+        return s
     
     # ── 子类必须实现的方法 ────────────────────────
     def connect(self):
@@ -524,7 +549,7 @@ class BaseInspectionEngine:
                 self.context['cache_hit_ratio_pct'] = 0.0
 
         # 容错执行结果存入 context
-        self.context['_safe_errors'] = getattr(self._execute_query_safe, '_errors', [])
+        self.context['_safe_errors'] = self._safe_errors if hasattr(self, '_safe_errors') else []
 
         # 5. 加载章节结构（用于报告动态生成章节）
         self._load_chapters_from_db()
@@ -781,7 +806,11 @@ class BaseInspectionEngine:
             return []
     
     def _execute_query_safe(self, cursor, sql, item_name=""):
-        """安全执行 SQL — 报错时 rollback 当前事务，防止 PostgreSQL 级联失败"""
+        """安全执行 SQL — 报错时 rollback 当前事务，防止 PostgreSQL 级联失败
+        
+        返回: {"columns": [...], "data": [...], "_error": "友好错误描述"} 
+        _error 键仅在有错误时存在，渲染时用于区分"查询失败"和"无数据"
+        """
         try:
             cursor.execute(sql)
             columns = [col[0] for col in cursor.description]
@@ -790,14 +819,23 @@ class BaseInspectionEngine:
                 data.append(dict(zip(columns, row)))
             return {"columns": columns, "data": data}
         except Exception as e:
-            print(f"[WARN] 执行 SQL 失败: {item_name}, 错误: {e}")
+            # 分类错误，生成友好描述
+            err_str = str(e)
+            friendly = self._classify_sql_error(item_name, err_str)
+            print(f"[WARN] {friendly}")
+            # 记录到实例字典和列表，供渲染和"巡检跳过记录"章节使用
+            if not hasattr(self, '_safe_errors'):
+                self._safe_errors = []
+            self._safe_errors.append(friendly)
+            if item_name:
+                self._query_errors[item_name] = friendly
             # PostgreSQL: 一条 SQL 报错后事务被 abort，必须 rollback 才能继续执行后续 SQL
             if self.conn:
                 try:
                     self.conn.rollback()
                 except Exception:
                     pass
-            return {"columns": [], "data": []}
+            return {"columns": [], "data": [], "_error": friendly}
     
     def _analyze_health_status(self):
         """健康评分"""
@@ -1867,7 +1905,7 @@ class BaseInspectionEngine:
                                     qt = doc.add_table(rows=1+len(q_data), cols=len(headers), style='Table Grid')
                                     for j, h in enumerate(headers):
                                         cell = qt.rows[0].cells[j]
-                                        cell.text = str(h)
+                                        cell.text = self._clean_xml_str(h, max_len=100)
                                         _set_cell_bg(cell, '336699')
                                         for run in cell.paragraphs[0].runs:
                                             run.font.size = Pt(9)
@@ -1877,14 +1915,28 @@ class BaseInspectionEngine:
                                             run.font.color.rgb = RGBColor(255, 255, 255)
                                     for i, row_data in enumerate(q_data):
                                         for j, (k, v) in enumerate(row_data.items()):
-                                            qt.rows[i+1].cells[j].text = str(v)[:200] if v else ''
+                                            qt.rows[i+1].cells[j].text = self._clean_xml_str(v)
                                             for run in qt.rows[i+1].cells[j].paragraphs[0].runs:
                                                 run.font.size = Pt(9)
                                                 run.font.name = '微软雅黑'
                                                 run._element.rPr.rFonts.set(qn('w:eastAsia'), '微软雅黑')
                                     doc.add_paragraph()
                         else:
-                            _fmt_para(self._t('report.data_missing') if is_zh else 'No data', size=10, color=RGBColor(150, 150, 150))
+                            # 数据为空：区分"查询失败"和"当前无记录"
+                            _err = self._query_errors.get(q_key, '')
+                            if _err:
+                                # 查询失败：显示友好原因
+                                _msg = _err.replace('⚠️ 章节「', '').replace('」：', '：')
+                                _p = doc.add_paragraph(_msg)
+                            else:
+                                # 真正无数据
+                                _no_data = '（当前无记录）' if is_zh else '(No data at this time)'
+                                _p = doc.add_paragraph(self._t('report.data_missing') + _no_data if is_zh else 'No data ' + _no_data)
+                            for _r in _p.runs:
+                                _r.font.size = Pt(10); _r.font.name = '微软雅黑'
+                                _r._element.rPr.rFonts.set(qn('w:eastAsia'), '微软雅黑')
+                                _r.font.color.rgb = RGBColor(150, 150, 150)
+                            doc.add_paragraph()
             else:
                 # 如果没有章节结构，直接渲染所有列表数据
                 _fmt_heading(self._t('report.dm_ch_data') if is_zh else 'Inspection Data', level=1)
@@ -1898,7 +1950,7 @@ class BaseInspectionEngine:
                         qt = doc.add_table(rows=1+len(val), cols=len(headers), style='Table Grid')
                         for j, h in enumerate(headers):
                             cell = qt.rows[0].cells[j]
-                            cell.text = str(h)
+                            cell.text = self._clean_xml_str(h, max_len=100)
                             _set_cell_bg(cell, '336699')
                             for run in cell.paragraphs[0].runs:
                                 run.font.size = Pt(9); run.font.name = '微软雅黑'
@@ -1906,7 +1958,7 @@ class BaseInspectionEngine:
                                 run.font.bold = True; run.font.color.rgb = RGBColor(255, 255, 255)
                         for i, row_data in enumerate(val):
                             for j, (k, v) in enumerate(row_data.items()):
-                                qt.rows[i+1].cells[j].text = str(v)[:200] if v else ''
+                                qt.rows[i+1].cells[j].text = self._clean_xml_str(v)
                                 for run in qt.rows[i+1].cells[j].paragraphs[0].runs:
                                     run.font.size = Pt(9); run.font.name = '微软雅黑'
                                     run._element.rPr.rFonts.set(qn('w:eastAsia'), '微软雅黑')

@@ -613,11 +613,6 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
             auto_analyze = []
             _emit('log', {'msg': f"[警告] 智能分析失败: {e}"})
 
-        if task:
-            task['status'] = 'done'
-            task['report_file'] = ofile
-            task['report_name'] = file_name
-
         # 历史快照
         try:
             from analyzer import HistoryManager
@@ -632,41 +627,72 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
         except Exception as e:
             _emit('log', {'msg': f"[警告] 历史快照保存失败: {e}"})
 
-        # Pro巡检记录
+        # 计算评分和风险等级（供前端展示使用）
+        risk_count = context.get('risk_count', 0)
+        if not risk_count:
+            issues = context.get('issues', [])
+            risk_count = len(issues) if isinstance(issues, list) else 0
+
+        health_status = context.get('health_status', '')
+        if '优秀' in health_status or 'Excellent' in health_status:
+            health_score = 100
+        elif '良好' in health_status or 'Good' in health_status:
+            health_score = 80
+        elif '一般' in health_status or 'Fair' in health_status:
+            health_score = 60
+        elif '需关注' in health_status or 'Attention' in health_status:
+            health_score = 40
+        else:
+            health_score = 100 - min(risk_count * 5, 50)
+
+        if health_score >= 85:
+            risk_level = 'healthy'
+        elif health_score >= 70:
+            risk_level = 'low'
+        elif health_score >= 50:
+            risk_level = 'medium'
+        elif health_score >= 30:
+            risk_level = 'high'
+        else:
+            risk_level = 'critical'
+
+        # 先设置 task['result']，确保前端一定能拿到结果（不受 Pro 记录保存影响）
+        if task:
+            _aa = task.get('auto_analyze') or []
+            _safe_issues = []
+            for item in _aa:
+                if isinstance(item, dict):
+                    _safe_issues.append({
+                        'level': _tr(item.get('col2', '')),
+                        'description': _tr(item.get('col1', '')),
+                        'suggestion': _tr(item.get('col3', '')),
+                    })
+            task['result'] = {
+                'db_type': cfg['history_db_type'],
+                'host': db_info['ip'],
+                'port': db_info['port'],
+                'label': label_name,
+                'health_score': health_score,
+                'health_status': health_status,
+                'risk_count': risk_count,
+                'risk_level': risk_level,
+                'finished_at': datetime.datetime.now().isoformat(),
+                'issues': _safe_issues,
+                'report_file': ofile,
+                'report_name': file_name,
+                'ai_advice': context.get('ai_advice', ''),
+            }
+            # status 必须在 result 之后设置，避免前端轮询到 done 但 result 还是空的
+            task['status'] = 'done'
+            task['report_file'] = ofile
+            task['report_name'] = file_name
+
+        # Pro巡检记录（失败不影响前端结果展示）
         try:
             from pro import get_instance_manager
-            risk_count = context.get('risk_count', 0)
-            if not risk_count:
-                issues = context.get('issues', [])
-                risk_count = len(issues) if isinstance(issues, list) else 0
-
-            health_status = context.get('health_status', '')
-            if '优秀' in health_status or 'Excellent' in health_status:
-                health_score = 100
-            elif '良好' in health_status or 'Good' in health_status:
-                health_score = 80
-            elif '一般' in health_status or 'Fair' in health_status:
-                health_score = 60
-            elif '需关注' in health_status or 'Attention' in health_status:
-                health_score = 40
-            else:
-                health_score = 100 - min(risk_count * 5, 50)
-
-            if health_score >= 85:
-                risk_level = 'healthy'
-            elif health_score >= 70:
-                risk_level = 'low'
-            elif health_score >= 50:
-                risk_level = 'medium'
-            elif health_score >= 30:
-                risk_level = 'high'
-            else:
-                risk_level = 'critical'
-
             import hashlib
             raw = f"{cfg['instance_prefix']}-{db_info['ip']}-{db_info['port']}".encode()
             instance_id = hashlib.md5(raw).hexdigest()[:12]
-
             im = get_instance_manager()
             im.record_inspection(
                 instance_id=instance_id,
@@ -679,22 +705,6 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
                 duration=0,
                 auto_analyze=auto_analyze if auto_analyze else []
             )
-
-            if task:
-                task['result'] = {
-                    'db_type': cfg['history_db_type'],
-                    'host': db_info['ip'],
-                    'port': db_info['port'],
-                    'label': label_name,
-                    'health_score': health_score,
-                    'health_status': health_status,
-                    'risk_count': risk_count,
-                    'risk_level': risk_level,
-                    'finished_at': datetime.datetime.now().isoformat(),
-                    'issues': [{'level': _tr(item.get('col2', '')), 'description': _tr(item.get('col1', '')), 'suggestion': _tr(item.get('col3', ''))} for item in (task.get('auto_analyze') or [])],
-                    'report_file': ofile,
-                    'report_name': file_name,
-                }
         except Exception as e:
             _emit('log', {'msg': f"[警告] Pro 巡检记录保存失败: {e}"})
 
@@ -1038,28 +1048,42 @@ def test_yashandb_connection(host, port, user, password):
         return False, str(e)
 
 
-def test_sqlserver_connection(host, port, user, password, database='master'):
-    """测试 SQL Server 连接"""
+def _get_sqlserver_driver():
+    """获取系统已安装的 SQL Server ODBC 驱动（按优先级排序）"""
     try:
         import pyodbc
-        conn_str = (
-            f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-            f"SERVER={host},{port};"
-            f"UID={user};"
-            f"PWD={password};"
-            f"TrustServerCertificate=yes;"
-            f"Encrypt=yes;"
-        )
-        if database:
-            conn_str += f"Database={database};"
-        conn = pyodbc.connect(conn_str, timeout=10)
-        cur = conn.cursor()
-        cur.execute("SELECT @@VERSION")
-        ver = cur.fetchone()[0]
-        ver = ver.split('\n')[0] if ver else 'Unknown'
-        cur.close()
-        conn.close()
-        return True, ver
+        installed = [d for d in pyodbc.drivers() if d.strip()]
+        preferred = ['ODBC Driver 18 for SQL Server', 'ODBC Driver 17 for SQL Server',
+                     'ODBC Driver 13 for SQL Server', 'SQL Server']
+        for d in preferred:
+            if d in installed:
+                return d
+        if installed:
+            return installed[0]
+    except Exception:
+        pass
+    return 'ODBC Driver 17 for SQL Server'
+
+
+def _build_sqlserver_conn_str(host, port, user, password, database=None, timeout=10):
+    """构建 SQL Server ODBC 连接字符串（动态检测驱动）"""
+    driver = _get_sqlserver_driver()
+    conn_str = "DRIVER={" + driver + "};SERVER=" + str(host) + "," + str(port) + ";UID=" + str(user) + ";PWD=" + str(password) + ";TrustServerCertificate=yes;Connection Timeout=" + str(timeout)
+    if database:
+        conn_str += ";DATABASE=" + str(database)
+    return conn_str
+
+
+def test_sqlserver_connection(host, port, user, password, database='master'):
+    """测试 SQL Server 连接（调用 main_sqlserver 的 connect 方法，支持多驱动 fallback）"""
+    try:
+        from main_sqlserver import SQLServerInspector
+        inspector = SQLServerInspector(host, int(port), user, password, database)
+        ok, ver = inspector.connect()
+        if ok:
+            return True, ver
+        else:
+            return False, ver
     except Exception as e:
         return False, str(e)
 
@@ -4062,7 +4086,7 @@ def api_pro_datasources_test_conn():
             conn.close()
         elif db_type == 'sqlserver':
             import pyodbc
-            conn_str = f"DRIVER={{ODBC Driver 17 for SQL Server}};SERVER={host},{port};UID={user};PWD={password};TrustServerCertificate=yes;Connection Timeout=10"
+            conn_str = _build_sqlserver_conn_str(host, port, user, password, timeout=10)
             conn = pyodbc.connect(conn_str)
             conn.close()
         elif db_type == 'yashandb':
@@ -4233,15 +4257,17 @@ def api_ds_databases(ds_id):
             databases = [r[0] for r in cur.fetchall()]
             conn.close()
         elif db_type == 'sqlserver':
-            import pyodbc
-            drv = '{ODBC Driver 17 for SQL Server}'
-            conn = pyodbc.connect(
-                f'DRIVER={drv};SERVER={host},{port};UID={user};PWD={pwd};Timeout={timeout}'
-            )
-            cur = conn.cursor()
-            cur.execute("SELECT name FROM sys.databases WHERE name NOT IN ('master','tempdb','model','msdb') ORDER BY name")
-            databases = [r[0] for r in cur.fetchall()]
-            conn.close()
+            try:
+                conn_str = _build_sqlserver_conn_str(host, port, user, pwd, timeout=timeout)
+                import pyodbc
+                conn = pyodbc.connect(conn_str)
+                cur = conn.cursor()
+                cur.execute("SELECT name FROM sys.databases ORDER BY name")
+                databases = [r[0] for r in cur.fetchall()]
+                conn.close()
+            except Exception as e:
+                print(f"[WARN] SQL Server 获取数据库列表失败: {e}")
+                databases = []
         elif db_type == 'oracle':
             import oracledb
             svc = inst.get('service_name','') or ''
@@ -4357,21 +4383,19 @@ def api_ds_objects(ds_id):
                     views.append(row[0])
             conn.close()
         elif db_type == 'sqlserver':
+            conn_str = _build_sqlserver_conn_str(host, port, user, pwd, database=database, timeout=timeout)
             import pyodbc
-            drv = '{ODBC Driver 17 for SQL Server}'
-            conn = pyodbc.connect(
-                f'DRIVER={drv};SERVER={host},{port};DATABASE={database};UID={user};PWD={pwd};Timeout={timeout}'
-            )
+            conn = pyodbc.connect(conn_str)
             cur = conn.cursor()
             cur.execute(
                 "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_TYPE='BASE TABLE' AND TABLE_CATALOG=%s ORDER BY TABLE_NAME",
+                "WHERE TABLE_TYPE='BASE TABLE' AND TABLE_CATALOG=? ORDER BY TABLE_NAME",
                 (database,)
             )
             tables = [r[0] for r in cur.fetchall()]
             cur.execute(
                 "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_TYPE='VIEW' AND TABLE_CATALOG=%s ORDER BY TABLE_NAME",
+                "WHERE TABLE_TYPE='VIEW' AND TABLE_CATALOG=? ORDER BY TABLE_NAME",
                 (database,)
             )
             views = [r[0] for r in cur.fetchall()]
@@ -4602,12 +4626,9 @@ def api_execute_sql():
             has_more = len(rows) >= 200
 
         elif db_type == 'sqlserver':
+            conn_str = _build_sqlserver_conn_str(host, port, user, pwd, database=database, timeout=10)
             import pyodbc
-            drv = '{ODBC Driver 17 for SQL Server}'
-            db_name = database or 'master'
-            conn = pyodbc.connect(
-                f'DRIVER={drv};SERVER={host},{port};DATABASE={db_name};UID={user};PWD={pwd};Timeout=10'
-            )
+            conn = pyodbc.connect(conn_str)
             cursor = conn.cursor()
             cursor.execute(sql)
             columns = [col[0] for col in cursor.description] if cursor.description else []
@@ -5314,10 +5335,13 @@ def api_inspection_execute_sql():
             conn.close()
 
         elif db_type == 'sqlserver':
+            conn_str = _build_sqlserver_conn_str(
+                db_info.get('host'), db_info.get('port'),
+                db_info.get('user'), db_info.get('password'),
+                database='master', timeout=30
+            )
             import pyodbc
-            driver = '{ODBC Driver 17 for SQL Server}'
-            dsn_str = f"DRIVER={driver};SERVER={db_info.get('host')},{db_info.get('port')};DATABASE=master;UID={db_info.get('user')};PWD={db_info.get('password')}"
-            conn = pyodbc.connect(dsn_str, timeout=30)
+            conn = pyodbc.connect(conn_str)
             cursor = conn.cursor()
             statements = _split_sql(sql)
             total_affected = 0
@@ -6002,12 +6026,9 @@ def execute_simple_query(db_info: dict, db_type: str, scope: str) -> str:
         elif db_type == 'sqlserver':
             try:
                 import pyodbc
-                conn_str = (
-                    f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                    f"SERVER={db_info.get('host')},{db_info.get('port', 1433)};"
-                    f"UID={db_info.get('user', '')};"
-                    f"PWD={db_info.get('password', '')};"
-                    f"TrustServerCertificate=yes;Encrypt=yes;"
+                conn_str = _build_sqlserver_conn_str(
+                    db_info.get('host'), db_info.get('port', 1433),
+                    db_info.get('user', ''), db_info.get('password', ''), timeout=10
                 )
                 conn = pyodbc.connect(conn_str, timeout=10)
                 cur = conn.cursor()

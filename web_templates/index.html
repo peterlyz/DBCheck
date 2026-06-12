@@ -1072,7 +1072,7 @@ select option { background: var(--surface2); }
   position: fixed;
   bottom: 0; left: 0; right: 0;
   height: 28px;
-  background: rgba(13,17,23,.92);
+  background: var(--surface2);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -4338,17 +4338,14 @@ function formatBytes(bytes) {
               <div class="tc-name" data-i18n="webui.db_pg_name">PostgreSQL</div>
               <div class="tc-desc" data-i18n="webui.db_pg_desc">适用于 PostgreSQL 10+ 实例，采集连接、缓存、Vacuum、索引、复制等核心指标。</div>
             </div>
-            <!-- SQL Server 卡片暂时屏蔽，待测试完成后恢复 -->
-            <!--
             <div class="type-card" id="tc-sqlserver" onclick="selectDbType('sqlserver')">
               <div class="tc-header">
                 <div class="tc-logo"><img src="/sqlserver.png" alt="DBCheck" style="width:36px;height:36px;"></div>
                 <div class="tc-check" id="chk-sqlserver"></div>
               </div>
-              <div class="tc-name-row"><span data-i18n="webui.db_sqlserver_name">SQL Server</span><span class="beta-tag">Beta</span></div>
+              <div class="tc-name-row"><span data-i18n="webui.db_sqlserver_name">SQL Server</span></div>
               <div class="tc-desc" data-i18n="webui.db_sqlserver_desc">适用于 SQL Server 2012+ 实例，采集连接、会话、等待统计、锁、备份等核心指标。</div>
             </div>
-            -->
             <div class="type-card" id="tc-dm" onclick="selectDbType('dm')">
               <div class="tc-header">
                 <div class="tc-logo"><img src="/dm.png" alt="DBCheck" style="width:36px;height:36px;"></div>
@@ -4362,7 +4359,7 @@ function formatBytes(bytes) {
                 <div class="tc-logo"><img src="/tidb.png" alt="DBCheck" style="width:36px;height:36px;"></div>
                 <div class="tc-check" id="chk-tidb"></div>
               </div>
-              <div class="tc-name-row"><span data-i18n="webui.db_tidb_name">TiDB</span><span class="beta-tag">Beta</span></div>
+              <div class="tc-name-row"><span data-i18n="webui.db_tidb_name">TiDB</span></div>
               <div class="tc-desc" data-i18n="webui.db_tidb_desc">适用于 TiDB 6.5+ / MySQL 8.0 兼容集群，采集集群拓扑、存储、事务、SQL 统计等核心指标。</div>
             </div>
             <div class="type-card" id="tc-ivorysql" onclick="selectDbType('ivorysql')">
@@ -5233,6 +5230,30 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <button class="btn btn-ghost" onclick="loadOracleClientConfig()" data-i18n="webui.oracle_client_reload">↻ 重新加载</button>
               <button class="btn btn-primary" onclick="saveOracleClientConfig()" data-i18n="webui.oracle_client_save_btn">💾 保存配置</button>
             </div>
+          </div>
+
+          <!-- SQL Server ODBC 驱动 -->
+          <div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px">🟠 SQL Server ODBC 驱动</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
+              SQL Server 连接需要 Microsoft ODBC Driver for SQL Server。<br/>
+              如果测试连接时报 <code>IM002</code> 错误，说明系统未安装该驱动。
+            </div>
+            <div style="background:rgba(33,150,243,0.08);border:1px solid rgba(33,150,243,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.7;">
+              <div style="font-weight:600;margin-bottom:6px;">📥 下载安装</div>
+              <div>• Windows：下载 <code>msodbcsql18.msi</code> 或 <code>msodbcsql17.msi</code> 双击安装</div>
+              <div>• Linux (Ubuntu/Debian)：<code>sudo apt install msodbcsql18</code></div>
+              <div>• Linux (RHEL/CentOS)：<code>sudo yum install msodbcsql18</code></div>
+              <div style="margin-top:8px;">
+                <a href="https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:600;">
+                  🔗 官方下载页面 →
+                </a>
+              </div>
+            </div>
+            <div id="sqlserver-odbc-status" style="font-size:12px;padding:8px 12px;border-radius:6px;display:none;margin-bottom:8px;"></div>
+            <button class="btn btn-ghost" onclick="checkSqlServerOdbcStatus()" style="padding:8px 16px;font-size:12px;">
+              🔍 检测 ODBC 驱动状态
+            </button>
           </div>
         </div>
       </div>
@@ -7037,7 +7058,7 @@ async function selectDbType(type, skipReload) {
   document.getElementById('tc-dm').classList.toggle('selected', type === 'dm');
   document.getElementById('tc-oracle').classList.toggle('selected', type === 'oracle');
   // SQL Server 卡片已屏蔽，待测试完成后恢复
-  // document.getElementById('tc-sqlserver').classList.toggle('selected', type === 'sqlserver');
+  document.getElementById('tc-sqlserver').classList.toggle('selected', type === 'sqlserver');
   document.getElementById('tc-tidb').classList.toggle('selected', type === 'tidb');
   document.getElementById('tc-ivorysql').classList.toggle('selected', type === 'ivorysql');
   document.getElementById('tc-yashandb').classList.toggle('selected', type === 'yashandb');
@@ -7047,7 +7068,7 @@ async function selectDbType(type, skipReload) {
   document.getElementById('chk-dm').textContent = type === 'dm' ? '✓' : '';
   document.getElementById('chk-oracle').textContent = type === 'oracle' ? '✓' : '';
   // SQL Server 卡片已屏蔽，待测试完成后恢复
-  // document.getElementById('chk-sqlserver').textContent = type === 'sqlserver' ? '✓' : '';
+  document.getElementById('chk-sqlserver').textContent = type === 'sqlserver' ? '✓' : '';
   document.getElementById('chk-tidb').textContent = type === 'tidb' ? '✓' : '';
   document.getElementById('chk-ivorysql').textContent = type === 'ivorysql' ? '✓' : '';
   document.getElementById('chk-yashandb').textContent = type === 'yashandb' ? '✓' : '';
@@ -7856,6 +7877,19 @@ function pollStatus() {
             </div>
             <a class="btn btn-success" href="/api/download/${currentTaskId}" download>${i18n('webui.btn_download_report')}</a>
             <button class="btn btn-ghost" onclick="shareDbInspectReport('${currentTaskId}')">${i18n('webui.btn_share_report') || '📤 分享报告'}</button>
+          </div>
+          <div class="result-card-v2">
+            <div class="health-ring-wrap">
+              <svg viewBox="0 0 120 120">
+                <circle class="ring-bg" cx="60" cy="60" r="45" />
+                <circle class="ring-fg" id="health-ring-fg" cx="60" cy="60" r="45" />
+              </svg>
+              <span class="health-ring-text" id="health-ring-text">-</span>
+            </div>
+            <div class="result-info">
+              <h3>${i18n('webui.home_health_score')}</h3>
+              <p>${i18n('webui.home_health_score_sub')}: ${data.health_status || '优秀'}</p>
+            </div>
           </div>
           ${analyzeHtml}
           ${aiHtml}`;
@@ -14155,6 +14189,45 @@ async function deleteBackupHistory(recordId) {
       statusEl.className = 'status-banner err';
       statusEl.textContent = '❌ 保存失败: ' + e.message;
       statusEl.style.display = 'block';
+    }
+  }
+
+  // ─── SQL Server ODBC Driver Status ──────────────────────
+  async function checkSqlServerOdbcStatus() {
+    const el = document.getElementById('sqlserver-odbc-status');
+    el.style.display = 'block';
+    el.innerHTML = '⏳ 正在检测 ODBC 驱动...';
+    el.style.background = 'var(--surface2)';
+    el.style.border = '1px solid var(--border)';
+    el.style.color = 'var(--text)';
+
+    try {
+      const res = await fetch('/api/sqlserver_odbc_status');
+      const data = await res.json();
+
+      if (data.available && data.available.length > 0) {
+        el.innerHTML =
+          `✅ <strong>SQL Server ODBC 驱动已安装</strong><br/>` +
+          `已安装驱动: ${data.available.map(d => '<code>' + d + '</code>').join(' / ')}<br/>` +
+          `DBCheck 将自动使用: <code>${data.using || data.available[0]}</code>`;
+        el.style.background = 'rgba(76,175,80,0.08)';
+        el.style.border = '1px solid rgba(76,175,80,0.3)';
+        el.style.color = '#4caf50';
+      } else {
+        el.innerHTML =
+          `❌ <strong>未检测到 SQL Server ODBC 驱动</strong><br/>` +
+          `系统已安装 ODBC 驱动: ${data.installed && data.installed.length > 0 ? data.installed.map(d => '<code>' + d + '</code>').join(' / ') : '无'}<br/>` +
+          `请安装 <strong>Microsoft ODBC Driver 17/18 for SQL Server</strong> 后重试。<br/>` +
+          `<a href="https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server" target="_blank" style="color:var(--primary);font-weight:600;">🔗 点击前往官方下载页面 →</a>`;
+        el.style.background = 'rgba(244,67,54,0.08)';
+        el.style.border = '1px solid rgba(244,67,54,0.3)';
+        el.style.color = '#f44336';
+      }
+    } catch(e) {
+      el.innerHTML = `❌ 检测失败: ${e.message}`;
+      el.style.background = 'rgba(255,152,0,0.08)';
+      el.style.border = '1px solid rgba(255,152,0,0.3)';
+      el.style.color = '#ff9800';
     }
   }
 

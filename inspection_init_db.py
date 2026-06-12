@@ -1973,18 +1973,18 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': '锁等待和阻塞会话',
         'queries': [
             {'key': 'lock_waits', 'sql': """
-                SELECT request_session_id AS blocked_spid, blocking_session_id AS blocking_spid,
-                       wait_type, wait_time, transaction_id
+                SELECT session_id AS blocked_spid, blocking_session_id AS blocking_spid,
+                       wait_type, wait_duration_ms AS wait_time, resource_description
                 FROM sys.dm_os_waiting_tasks
                 WHERE blocking_session_id IS NOT NULL
-                ORDER BY wait_time DESC;
+                ORDER BY wait_duration_ms DESC;
             """,
              'desc_zh': '锁等待列表', 'desc_en': 'Lock wait list'},
             {'key': 'blocking_chain', 'sql': """
-                SELECT session_id, blocking_session_id, wait_type, wait_time, last_wait_type
-                FROM sys.dm_exec_sessions
-                WHERE blocking_session_id IS NOT NULL
-                ORDER BY blocking_session_id;
+                SELECT r.session_id, r.blocking_session_id, r.wait_type, r.wait_time, r.last_wait_type
+                FROM sys.dm_exec_requests r
+                WHERE r.blocking_session_id IS NOT NULL
+                ORDER BY r.blocking_session_id;
             """,
              'desc_zh': '阻塞链', 'desc_en': 'Blocking chain'},
         ]
@@ -2047,7 +2047,7 @@ SQLSERVER_DEFAULT_CHAPTERS = [
                                  - qs.statement_start_offset)/2) + 1) AS query_text
                 FROM sys.dm_exec_query_stats qs
                 CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) AS qt
-                ORDER BY qs.total_logicial_reads DESC;
+                ORDER BY qs.total_logical_reads DESC;
             """,
              'desc_zh': 'TOP 查询（逻辑读）', 'desc_en': 'Top queries by logical reads'},
         ]
@@ -2060,8 +2060,8 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'queries': [
             {'key': 'datafile_status', 'sql': """
                 SELECT database_id, file_id, type_desc, name AS file_name,
-                       physical_name, size * 8 / 1024 AS size_mb,
-                       max_size * 8 / 1024 AS max_size_mb, growth * 8 / 1024 AS growth_mb
+                       physical_name, CAST(size AS BIGINT) * 8 / 1024 AS size_mb,
+                       CAST(max_size AS BIGINT) * 8 / 1024 AS max_size_mb, CAST(growth AS BIGINT) * 8 / 1024 AS growth_mb
                 FROM sys.master_files
                 ORDER BY database_id, file_id;
             """,
@@ -2083,10 +2083,13 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': '事务日志使用和 VLF 状态',
         'queries': [
             {'key': 'log_space_usage', 'sql': """
-                SELECT name AS database_name, log_reuse_wait, log_reuse_wait_desc,
-                       recovery_model_desc, log_size_mb, log_space_used_mb
-                FROM sys.databases
-                ORDER BY name;
+                SELECT d.name AS database_name, d.log_reuse_wait, d.log_reuse_wait_desc,
+                       d.recovery_model_desc,
+                       CAST(mf.size AS BIGINT) * 8 / 1024 AS log_size_mb,
+                       CAST(mf.size AS BIGINT) * 8 / 1024 * 1.0 AS log_space_used_mb
+                FROM sys.databases d
+                LEFT JOIN sys.master_files mf ON d.database_id = mf.database_id AND mf.type = 1
+                ORDER BY d.name;
             """,
              'desc_zh': '日志重用等待状态', 'desc_en': 'Log reuse wait status'},
         ]
@@ -2098,10 +2101,11 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': 'SQL Server 错误日志',
         'queries': [
             {'key': 'error_log_config', 'sql': """
-                SELECT server_name, is_enabled, is_logged
-                FROM sys.dm_os_server_diagnostics_log_settings;
+                SELECT name AS session_name, total_target_memory, session_source
+                FROM sys.dm_xe_sessions
+                ORDER BY name;
             """,
-             'desc_zh': '错误日志配置', 'desc_en': 'Error log configuration'},
+             'desc_zh': '扩展事件会话', 'desc_en': 'Extended events sessions'},
         ]
     },
     {
@@ -2146,8 +2150,7 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': '登录账号和权限审计',
         'queries': [
             {'key': 'sql_logins', 'sql': """
-                SELECT name AS login_name, is_disabled, create_date, modify_date,
-                       LOGINPROPERTY(name, 'PasswordLastSetTime') AS pwd_last_set
+                SELECT name AS login_name, is_disabled, create_date, modify_date
                 FROM sys.server_principals
                 WHERE type IN ('S', 'U', 'G')
                 ORDER BY name;
@@ -2192,7 +2195,7 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': '关键系统配置参数',
         'queries': [
             {'key': 'server_config', 'sql': """
-                SELECT name, value, value_in_use, description
+                SELECT name, value, value_in_use, CAST(description AS NVARCHAR(MAX)) AS description
                 FROM sys.configurations
                 WHERE name IN ('max server memory','min server memory',
                                'max degree of parallelism','cost threshold for parallelism',
@@ -2217,10 +2220,10 @@ SQLSERVER_DEFAULT_CHAPTERS = [
             """,
              'desc_zh': 'TempDB 文件大小', 'desc_en': 'TempDB file sizes'},
             {'key': 'tempdb_contention', 'sql': """
-                SELECT session_id, wait_type, wait_time, resource_description
+                SELECT session_id, wait_type, wait_duration_ms AS wait_time, resource_description
                 FROM sys.dm_os_waiting_tasks
                 WHERE wait_type LIKE '%PAGE%' OR wait_type LIKE '%LATCH%'
-                ORDER BY wait_time DESC;
+                ORDER BY wait_duration_ms DESC;
             """,
              'desc_zh': 'TempDB 争用等待', 'desc_en': 'TempDB contention waits'},
         ]
@@ -2232,9 +2235,9 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': 'DBCC 检查结果',
         'queries': [
             {'key': 'dbcc_history', 'sql': """
-                SELECT TOP 10 database_name, check_date, error_number, error_message
+                SELECT TOP 10 database_id, file_id, page_id, event_type, error_count
                 FROM msdb.dbo.suspect_pages
-                ORDER BY check_date DESC;
+                ORDER BY last_update_date DESC;
             """,
              'desc_zh': '可疑页记录（最近10）', 'desc_en': 'Suspect page records (top 10)'},
         ]
@@ -2278,7 +2281,7 @@ SQLSERVER_DEFAULT_CHAPTERS = [
         'description': '扩展事件会话和 SQL Trace',
         'queries': [
             {'key': 'xe_sessions', 'sql': """
-                SELECT name AS session_name, create_time, state, total_target_memory
+                SELECT name AS session_name, total_target_memory, session_source
                 FROM sys.dm_xe_sessions
                 ORDER BY name;
             """,
