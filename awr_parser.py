@@ -27,7 +27,7 @@ from typing import Dict, List, Any, Optional, Tuple
 #  注意: 更具体的关键词放在前面，避免短关键词先匹配
 # ════════════════════════════════════════════════════════════════
 H3_KEYWORDS: Dict[str, Tuple[str, Optional[str]]] = {
-    # ── Report Summary 子章节 (也用于 <p /> 标题匹配) ──
+    # ── Report Summary 子章节 (英文) ──
     'load profile': ('load_profile', None),
     'instance efficiency percentages': ('instance_efficiency', None),
     'top 10 foreground events by total wait time': ('fg_wait_events', 'top10'),
@@ -38,6 +38,21 @@ H3_KEYWORDS: Dict[str, Tuple[str, Optional[str]]] = {
     'memory statistics': ('memory_stats', None),
     'cache sizes': ('cache_sizes', None),
     'shared pool statistics': ('shared_pool_stats', None),
+    # ── Report Summary 子章节 (中文) ──
+    '负载概况': ('load_profile', None),
+    '实例效率': ('instance_efficiency', None),
+    '实例效率百分比': ('instance_efficiency', None),
+    '前台等待事件': ('fg_wait_events', 'events'),
+    '后台等待事件': ('bg_wait_events', 'events'),
+    '按总等待时间排序的前': ('fg_wait_events', 'top10'),
+    '按总等待时间排序的等待': ('fg_wait_events', 'wait_classes'),
+    '主机 cpu': ('host_cpu', None),
+    '实例 cpu': ('instance_cpu', None),
+    'i/o 概况': ('io_profile', None),
+    'io 概况': ('io_profile', None),
+    '内存统计': ('memory_stats', None),
+    '缓存大小': ('cache_sizes', None),
+    '共享池统计': ('shared_pool_stats', None),
 
     # ── Wait Events Statistics (h2 #21) ──
     'time model statistics': ('time_model', None),
@@ -72,6 +87,42 @@ H3_KEYWORDS: Dict[str, Tuple[str, Optional[str]]] = {
     'sql ordered by logical reads': ('top_sql', 'logical_reads'),
     'sql with plan changes': ('sql_plan_changes', None),
     'complete list of sql text': ('sql_text', None),
+    # ── SQL Statistics (中文) ──
+    'sql 按经过时间排序': ('top_sql', 'elapsed'),
+    'sql 按cpu时间排序': ('top_sql', 'cpu'),
+    'sql 按用户io等待时间排序': ('top_sql', 'user_io'),
+    'sql 按逻辑读排序': ('top_sql', 'logical_reads'),
+    'sql 按物理读排序': ('top_sql', 'physical_reads'),
+    'sql 按执行次数排序': ('top_sql', 'executions'),
+    '执行计划发生变更': ('sql_plan_changes', None),
+    '执行计划变更': ('sql_plan_changes', None),
+
+    # ── Wait Events (中文) ──
+    '前台等待类': ('fg_wait_events', 'wait_class'),
+    '前台等待事件': ('fg_wait_events', 'events'),
+    '后台等待事件': ('bg_wait_events', 'events'),
+    '后台等待类': ('bg_wait_events', 'wait_class'),
+    '等待事件直方图': ('wait_histogram', None),
+
+    # ── Undo/Redo (中文) ──
+    'undo 统计': ('undo_stats', None),
+    'redo 统计': ('redo_stats', None),
+    'redo 日志统计': ('redo_stats', None),
+
+    # ── Segment/Object (中文) ──
+    '段统计': ('segment_stats', None),
+    '对象统计': ('object_stats', None),
+    '段按物理读': ('segment_stats', 'physical_reads'),
+    '段按逻辑读': ('segment_stats', 'logical_reads'),
+
+    # ── Latch (中文) ──
+    '闩锁统计': ('latch_stats', 'latch'),
+    '闩锁活动': ('latch_stats', 'activity'),
+
+    # ── Advisory (中文) ──
+    '内存建议': ('advisory', None),
+    'undo 建议': ('advisory', 'undo'),
+    'pga 建议': ('advisory', 'pga_target'),
 
     # ── Instance Activity Statistics (h2 #23) ──
     'key instance activity stats': ('instance_activity', 'key'),
@@ -216,6 +267,22 @@ H2_KEYWORDS: Dict[str, str] = {
     'addm task': 'addm_section',
     'report summary': 'summary_section',
     'main report': '',
+    # 中文 h2 标题
+    '等待事件统计': 'wait_section',
+    'sql 统计': 'sql_section',
+    '实例活动统计': 'instance_activity_section',
+    'i/o 统计': 'io_section',
+    'io 统计': 'io_section',
+    '缓冲池统计': 'buffer_pool_section',
+    '建议统计': 'advisory_section',
+    '等待统计': 'wait_stats_section',
+    'undo 统计': 'undo_section',
+    '闩锁统计': 'latch_section',
+    '段统计': 'segment_section',
+    '内存统计': 'memory_section',
+    '初始化参数': 'init_params_section',
+    '活动会话历史': 'ash_section',
+    'addm 任务': 'addm_section',
 }
 
 
