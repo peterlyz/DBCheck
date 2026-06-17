@@ -380,6 +380,8 @@ If this tool has been helpful, please consider supporting ongoing development:
 
 <img src="snapshot/pay-en.png" alt="Donation QR Code" width="400" />
 
+<img src="snapshot/dbcheck-badge.png" alt="DBCheck Supporter Badge" width="120" />
+
 > Please include your name or nickname with your donation ❤️
 
 ### Donors
@@ -387,12 +389,12 @@ If this tool has been helpful, please consider supporting ongoing development:
 | Date | Name | ID |
 |------|------|------|
 | 2026-04-28 | \*ck | No.000001 |
-| 2026-04-29 | \*Rong | No.000002 |
-| 2026-05-04 | \*\*Zheng | No.000003 |
-| 2026-06-02 | \*\*Moonlight | No.000004 |
-| 2026-06-03 | \*Shu | No.000005 |
+| 2026-04-29 | \*嵘 | No.000002 |
+| 2026-05-04 | \*\*政 | No.000003 |
+| 2026-06-02 | \*\*月光 | No.000004 |
+| 2026-06-03 | \*树 | No.000005 |
 | 2026-06-07 | \*0518 | No.000006 |
-| 2026-06-17 | \*Xuan | No.000007 |
+| 2026-06-17 | \*轩 | No.000007 |
 
 ---
 
