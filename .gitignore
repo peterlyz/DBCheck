@@ -37,7 +37,10 @@ mysql_inspector.lic
 # Pro runtime data
 pro_data/*.*
 # Driver binaries (download from GitHub Releases, too large for Git)
-drivers/
+drivers/oracle_client/windows_x64
+drivers/oracle_client/linux_x64
+drivers/oracle_client/macos_x64
+drivers/oracle_client/darwin_x64
 awr_uploads/
 data/*.db
 commit_msg.txt
