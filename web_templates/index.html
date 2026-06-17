@@ -3135,7 +3135,8 @@ async function awrGenerateReport() {
 
           const dlBtn = document.getElementById('awr-download-btn');
           dlBtn.onclick = function() {
-            window.open('/api/download_file?path=' + encodeURIComponent(statusData.report_file), '_blank');
+            const fname = statusData.report_name || '';
+            if (fname) window.open('/api/download_file?name=' + encodeURIComponent(fname), '_blank');
           };
 
           document.getElementById('awr-report-download').style.display = 'block';
