@@ -112,7 +112,8 @@ class GBaseInspector(BaseInspectionEngine):
             # 显式启动 JVM，把 GBase JDBC 驱动 JAR 加入 classpath
             if not jpype.isJVMStarted():
                 try:
-                    jpype.startJVM(classpath=[jdbc_driver_path])
+                    jpype.startJVM()
+                    jpype.addClassPath(jdbc_driver_path)
                 except Exception:
                     pass
 
@@ -198,7 +199,8 @@ def test_gbase_jdbc_connection(host, port, user, password, database='gbase01', g
         # 显式启动 JVM，把 GBase JDBC 驱动 JAR 加入 classpath
         if not jpype.isJVMStarted():
             try:
-                jpype.startJVM(classpath=[_jdbc_driver_path])
+                jpype.startJVM()
+                jpype.addClassPath(_jdbc_driver_path)
             except Exception:
                 pass
 
