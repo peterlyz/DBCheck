@@ -20,6 +20,7 @@ FROM python:3.12-slim-bookworm AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    default-jdk \
     unixodbc-dev \
     curl \
     wget \
@@ -85,6 +86,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     ca-certificates \
     unzip \
+    default-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Python venv from builder

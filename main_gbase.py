@@ -37,15 +37,31 @@ def _detect_java_home():
     """自动探测 JAVA_HOME（按常见安装路径）"""
     candidates = [
         os.environ.get('JAVA_HOME', ''),
+        # Windows
         'C:\\Program Files\\Java\\jdk-11',
         'C:\\Program Files\\Java\\jdk-17',
         'C:\\Program Files\\Java\\jdk-1.8',
         'C:\\Program Files\\Eclipse Adoptium\\jdk-11',
         'C:\\Program Files\\Eclipse Adoptium\\jdk-17',
+        # Linux (Debian/Ubuntu Docker 镜像)
+        '/usr/lib/jvm/java-17-openjdk-amd64',
+        '/usr/lib/jvm/java-11-openjdk-amd64',
+        '/usr/lib/jvm/default-java',
+        '/usr/lib/jvm/java-1.17.0-openjdk-amd64',
+        '/usr/lib/jvm/java-1.11.0-openjdk-amd64',
     ]
     for path in candidates:
         if path and os.path.isdir(path):
             return path
+    # Linux fallback: glob /usr/lib/jvm/* 找任意已安装的 JVM
+    try:
+        import glob
+        jvm_dirs = sorted(glob.glob('/usr/lib/jvm/java-*'))
+        for d in jvm_dirs:
+            if os.path.isdir(d):
+                return d
+    except Exception:
+        pass
     return None
 
 _detected_java_home = _detect_java_home()
