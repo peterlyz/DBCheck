@@ -138,6 +138,9 @@ H3_KEYWORDS: Dict[str, Tuple[str, Optional[str]]] = {
     'undo segment stats': ('undo_stats', 'segments'),
     'undo segment statistics': ('undo_stats', 'segments'),
     'undo segment summary': ('undo_stats', 'summary'),
+    'redo statistics': ('redo_stats', None),
+    'redo log statistics': ('redo_stats', None),
+    'redo': ('redo_stats', None),
     'redistribution of undo block classes': ('undo_stats', 'block_classes'),
 
     # ── Latch Statistics (h2 #29) ──
@@ -470,6 +473,50 @@ class AWRParser(HTMLParser):
                 return (field, sub)
         return None
 
+    # ── 方案B：按表格列名特征识别章节类型 ──────────────────────
+    COLUMN_SIGNATURES: List[Tuple[List[str], str, Optional[str]]] = [
+        # (关键词列表, field, subsection)
+        # 负载概况 (Load Profile)
+        (['per second', 'per transaction', 'per execute', '每秒', '每事务'], 'load_profile', None),
+        # 实例效率 (Instance Efficiency)
+        (['buffer nowait', 'redo nowait', 'in-memory sort', '缓冲区现在等待', '重做现在等待', '内存中排序'], 'instance_efficiency', None),
+        # 系统/内存统计 (Memory Statistics)
+        (['host memory', 'sga memory', '主机内存', 'sga内存', 'pga aggregate'], 'memory_stats', None),
+        # Undo 统计
+        (['undo blocks', 'undo segments', '撤消块', '撤消段', '回滚段'], 'undo_stats', None),
+        # 对象统计 (Object Statistics)
+        (['table', 'index', 'segments', '段统计', '对象统计', 'segment'], 'object_stats', None),
+        # SQL 执行计划变更
+        (['sql id', 'plan hash', 'sql_id', '计划哈希', '执行计划变更'], 'sql_plan_changes', None),
+        # Redo 统计
+        (['redo', 'log', '重做', '重做日志'], 'redo_stats', None),
+        # Top SQL
+        (['elapsed time', 'cpu time', 'sql ordered', 'sql文本', 'sql模块'], 'top_sql', 'by_elapsed'),
+        # 等待事件
+        (['event', 'waits', 'total wait', '等待事件', '等待'], 'fg_wait_events', 'top'),
+        # 实例活动统计
+        (['instance activity', '实例活动', 'activity statistics'], 'instance_activity', None),
+        # IO 统计
+        (['tablespace io', 'file io', 'io stats', 'io统计'], 'file_io', None),
+    ]
+
+    def _detect_section_by_columns(self):
+        """根据表格列名特征检测章节类型，返回 (field, subsection) 或 None。
+        支持中英文列名匹配。
+        """
+        if not self.table_headers:
+            return None
+        hdr_text = ' '.join(h.lower() for h in self.table_headers if h)
+        hdr_joined = '|' + '|'.join(h.lower().strip() for h in self.table_headers if h) + '|'
+
+        for keywords, field, subsection in self.COLUMN_SIGNATURES:
+            for kw in keywords:
+                kw_lower = kw.lower()
+                # 精确匹配列名（用 | 分隔避免子串误判）
+                if kw_lower in hdr_joined or kw_lower in hdr_text:
+                    return (field, subsection)
+        return None
+
     def _process_heading(self, size: str, text: str):
         if not text:
             return
@@ -512,6 +559,12 @@ class AWRParser(HTMLParser):
             'headers': self.table_headers[:],
             'rows': [row[:] for row in self.table_rows]
         }
+
+        # 方案B：标题匹配失败时，按表格列名特征识别章节
+        if self.current_field is None:
+            detected = self._detect_section_by_columns()
+            if detected:
+                self.current_field = detected
 
         if self.current_field is None:
             self.awr_data['extra_sections'].append({
@@ -679,8 +732,17 @@ class AWRParser(HTMLParser):
     # ─── 公开接口 ──────────────────────────────────────────────
 
     def parse_file(self, filepath: str) -> Dict[str, Any]:
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
+        # 编码探测：先尝试 UTF-8，失败则尝试 GBK/GB18030，最后用 latin-1 兜底
+        for enc in ('utf-8', 'gbk', 'gb18030'):
+            try:
+                with open(filepath, 'r', encoding=enc) as f:
+                    content = f.read()
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            with open(filepath, 'r', encoding='latin-1') as f:
+                content = f.read()
         self.feed(content)
         self._extract_metadata_from_extra()
         return self.awr_data

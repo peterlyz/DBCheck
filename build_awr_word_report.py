@@ -861,7 +861,7 @@ def build_awr_word_report(awr_data: Dict[str, Any], output_path: str = None, sou
     # 第6章：系统统计
     # ═══════════════════════════════════════════════════════════════════
     _add_section('系统统计')
-    _render_table_data(doc, awr_data.get('system_stats', []))
+    _render_table_data(doc, awr_data.get('memory_stats', []))
 
     # ═══════════════════════════════════════════════════════════════════
     # 第7章：闩锁统计

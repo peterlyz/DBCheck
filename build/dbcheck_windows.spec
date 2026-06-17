@@ -11,8 +11,9 @@ PROJECT_DIR = os.getcwd()
 
 # Directories to include as data
 data_dirs = [
-    'web_templates', 'static', 'i18n', 'templates',
+    'web_templates', 'i18n', 'templates',
     'data', 'rag', 'pro', 'pro_data',
+    'drivers',
 ]
 
 # JSON config files
