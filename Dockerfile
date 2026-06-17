@@ -55,7 +55,7 @@ RUN /opt/venv/bin/pip install --no-cache-dir dmpython>=1.0.0 \
 # If download fails, related DB types will be disabled at runtime.
 RUN curl -fSL "https://github.com/fiyo/DBCheck/releases/download/drivers/drivers.zip" \
     -o /tmp/drivers.zip \
-    && unzip -o /tmp/drivers.zip -d /build/drivers/ \
+    && unzip -o /tmp/drivers.zip -d /build/ \
     && rm -f /tmp/drivers.zip \
     || echo "WARNING: drivers.zip download failed (Oracle/YashanDB drivers not included)."
 
