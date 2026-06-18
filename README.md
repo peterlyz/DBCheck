@@ -17,7 +17,7 @@ DBCheck is an open-source, cross-platform database health inspection tool suppor
 [![WeChat](https://img.shields.io/badge/WeChat-Shandong_ORA_UG-brightgreen?logo=WeChat)]()
 [![WebSite](https://img.shields.io/badge/Website-www.dbcheck.top-green.svg)](https://dbcheck.top)
 [![Docker Pulls](https://img.shields.io/docker/pulls/jackge12345/dbcheck?style=flat-square&label=Docker%20Pulls&cacheSeconds=300)](https://hub.docker.com/r/jackge12345/dbcheck)
-[![GHCR Pulls](https://img.shields.io/badge/88-blue.svg?label=GHCR+Downloads)]()
+[![GHCR Pulls](https://img.shields.io/badge/88-blue.svg?label=GHCR+Pulls)]()
 ![Downloads](https://img.shields.io/github/downloads/fiyo/DBCheck/total?style=flat-square&label=Source+Downloads)
 
 ---
