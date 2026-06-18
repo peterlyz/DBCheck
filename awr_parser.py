@@ -543,6 +543,8 @@ class AWRParser(HTMLParser):
     # ── 方案B：按表格列名特征识别章节类型 ──────────────────────
     COLUMN_SIGNATURES: List[Tuple[List[str], str, Optional[str]]] = [
         # (关键词列表, field, subsection)
+        # IO 概况 (IO Profile) — 必须放在负载概况前面，避免 per second 冲突
+        (['read+write per second', 'read per second', 'write per second'], 'io_profile', None),
         # 负载概况 (Load Profile)
         (['per second', 'per transaction', 'per execute', '每秒', '每事务'], 'load_profile', None),
         # 实例效率 (Instance Efficiency)
@@ -555,8 +557,8 @@ class AWRParser(HTMLParser):
         (['table', 'index', 'segments', '段统计', '对象统计', 'segment'], 'object_stats', None),
         # SQL 执行计划变更
         (['sql id', 'plan hash', 'sql_id', '计划哈希', '执行计划变更'], 'sql_plan_changes', None),
-        # Redo 统计
-        (['redo', 'log', '重做', '重做日志'], 'redo_stats', None),
+        # Redo 统计 — 注意不要用 'log' 太宽泛，会误匹配 Logical Reads
+        (['redo size', 'redo writes', 'redo synch', 'redo log space', '重做日志'], 'redo_stats', None),
         # Top SQL
         (['elapsed time', 'cpu time', 'sql ordered', 'sql文本', 'sql模块'], 'top_sql', 'by_elapsed'),
         # 等待事件
@@ -627,11 +629,14 @@ class AWRParser(HTMLParser):
             'rows': [row[:] for row in self.table_rows]
         }
 
-        # 方案B：标题匹配失败时，按表格列名特征识别章节
-        if self.current_field is None:
-            detected = self._detect_section_by_columns()
-            if detected:
-                self.current_field = detected
+        # 按表格列名特征识别章节（无论标题是否匹配，列名是最可靠的标识）
+        detected_by_cols = self._detect_section_by_columns()
+        if detected_by_cols:
+            # 列名检测优先于标题匹配——表头不会说谎
+            self.current_field = detected_by_cols
+        elif self.current_field is None and not detected_by_cols:
+            # 标题没匹配到，列名也没特征 → 丢进 extra_sections
+            pass
 
         if self.current_field is None:
             self.awr_data['extra_sections'].append({

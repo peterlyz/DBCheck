@@ -993,7 +993,85 @@ def build_awr_word_report(awr_data: Dict[str, Any], output_path: str = None, sou
             run_msg = p.add_run(msg)
             run_msg.font.size = Pt(10.5)
     else:
-        _add_text(doc, '未检测到明显性能问题。', size=Pt(11), color=RGBColor(0, 128, 0), bold=True)
+        # 没有触发任何诊断规则：汇总已有数据，给出诊断状态说明
+        _add_subsection('诊断状态汇总')
+
+        # 检测各数据源的可用性
+        data_status = {
+            '前台等待事件': ('fg_wait_events', awr_data),
+            'Top SQL': ('top_sql', awr_data),
+            '负载概况': ('load_profile', awr_data),
+            '实例效率': ('instance_efficiency', awr_data),
+            '内存统计': ('memory_stats', awr_data),
+            'I/O 概况': ('io_profile', awr_data),
+        }
+
+        check_results = []
+        for name, (key, src) in data_status.items():
+            val = src.get(key, None)
+            has_data = bool(val) if isinstance(val, list) else bool(val)
+            check_results.append((name, has_data))
+
+        # 汇总表格
+        if check_results:
+            status_table = doc.add_table(rows=len(check_results) + 1, cols=3, style='Table Grid')
+            for i, hdr in enumerate(['数据源', '状态', '诊断说明']):
+                cell = status_table.rows[0].cells[i]
+                cell.text = ''
+                p = cell.paragraphs[0]
+                r = p.add_run(hdr)
+                r.font.bold = True
+                r.font.size = Pt(10)
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+            missing_any = False
+            for idx, (name, ok) in enumerate(check_results, 1):
+                cells = status_table.rows[idx].cells
+                cells[0].text = ''
+                cells[0].paragraphs[0].add_run(name).font.size = Pt(10)
+                if ok:
+                    cells[1].text = ''
+                    run = cells[1].paragraphs[0].add_run('✅ 有数据')
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = RGBColor(0, 128, 0)
+                    cells[2].text = ''
+                    cells[2].paragraphs[0].add_run('数据已提取，各项指标在正常范围内').font.size = Pt(10)
+                else:
+                    missing_any = True
+                    cells[1].text = ''
+                    run = cells[1].paragraphs[0].add_run('⚠ 未提取到数据')
+                    run.font.size = Pt(10)
+                    run.font.color.rgb = RGBColor(204, 102, 0)
+                    cells[2].text = ''
+                    cells[2].paragraphs[0].add_run('AWR 报告可能为中文版，或该章节在报告中不存在').font.size = Pt(10)
+
+            doc.add_paragraph()
+
+            if missing_any:
+                p = doc.add_paragraph()
+                r = p.add_run('💡 提示：')
+                r.font.bold = True
+                r.font.size = Pt(10)
+                r.font.color.rgb = RGBColor(0, 102, 204)
+                r2 = p.add_run(' 部分数据源未提取到，可能原因：')
+                r2.font.size = Pt(10)
+                items = [
+                    'AWR 报告为中文版，解析器需要中文章节标题匹配（v2.5.13 已增强中文支持）',
+                    'AWR 报告生成时间段内该指标无数据',
+                    '报告格式为 Oracle 较早版本，HTML 结构与当前解析器不兼容',
+                    '建议使用 Oracle 11g R2 及以上版本的 AWR 报告',
+                ]
+                for item in items:
+                    bp = doc.add_paragraph(f'  • {item}', style='List Bullet')
+                    for run in bp.runs:
+                        run.font.size = Pt(9.5)
+                        run.font.color.rgb = RGBColor(100, 100, 100)
+            else:
+                p = doc.add_paragraph()
+                r = p.add_run('✅ 所有数据源均已成功提取，各项指标在正常范围内，未检测到明显性能风险。')
+                r.font.size = Pt(10.5)
+                r.font.color.rgb = RGBColor(0, 128, 0)
+                r.font.bold = True
 
     # ═══════════════════════════════════════════════════════════════════
     # AI 智能诊断章节（如果启用了 AI）
