@@ -10,9 +10,10 @@ block_cipher = None
 PROJECT_DIR = os.getcwd()
 
 # Directories to include as data
+# NOTE: 'data' is a runtime directory (SQLite DBs), not packaged.
 data_dirs = [
     'web_templates', 'i18n', 'templates',
-    'data', 'rag', 'pro', 'pro_data',
+    'rag', 'pro', 'pro_data',
     'drivers',
 ]
 
