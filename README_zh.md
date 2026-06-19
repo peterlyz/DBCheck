@@ -47,20 +47,20 @@ DBCheck 是一款开源、跨平台的数据库自动化健康巡检工具，支
 
 ```bash
 # Docker Hub
-docker pull jackge12345/dbcheck:2.5.12
+docker pull jackge12345/dbcheck:latest
 docker run -d -p 5003:5003 \
   -v dbcheck_data:/app/data \
   -v dbcheck_reports:/app/reports \
   --name dbcheck \
-  jackge12345/dbcheck:2.5.12
+  jackge12345/dbcheck:latest
 
 # GitHub Container Registry（国内友好）
-docker pull ghcr.io/fiyo/dbcheck:2.5.12
+docker pull ghcr.io/fiyo/dbcheck:latest
 docker run -d -p 5003:5003 \
   -v dbcheck_data:/app/data \
   -v dbcheck_reports:/app/reports \
   --name dbcheck \
-  ghcr.io/fiyo/dbcheck:2.5.12
+  ghcr.io/fiyo/dbcheck:latest
 ```
 
 访问 **http://localhost:5003**，默认账号密码均为 `dbcheck`（首次登录后请在账户中心修改密码）。

@@ -47,20 +47,20 @@ One command to get started — no dependencies required:
 
 ```bash
 # Docker Hub
-docker pull jackge12345/dbcheck:2.5.12
+docker pull jackge12345/dbcheck:latest
 docker run -d -p 5003:5003 \
   -v dbcheck_data:/app/data \
   -v dbcheck_reports:/app/reports \
   --name dbcheck \
-  jackge12345/dbcheck:2.5.12
+  jackge12345/dbcheck:latest
 
 # GitHub Container Registry (China-friendly)
-docker pull ghcr.io/fiyo/dbcheck:2.5.12
+docker pull ghcr.io/fiyo/dbcheck:latest
 docker run -d -p 5003:5003 \
   -v dbcheck_data:/app/data \
   -v dbcheck_reports:/app/reports \
   --name dbcheck \
-  ghcr.io/fiyo/dbcheck:2.5.12
+  ghcr.io/fiyo/dbcheck:latest
 ```
 
 Visit **http://localhost:5003**. Default credentials are `dbcheck` / `dbcheck` (change your password in Account Center after first login).
