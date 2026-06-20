@@ -45,3 +45,4 @@ awr_uploads/
 data/*.db
 commit_msg.txt
 docker_images/*
+*.zip

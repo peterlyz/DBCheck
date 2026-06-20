@@ -25,7 +25,7 @@ import urllib.error
 import re
 from pathlib import Path
 
-DRIVERS_ZIP_URL = "https://github.com/fiyo/DBCheck/releases/download/drivers/drivers.zip"
+DRIVERS_ZIP_URL = "https://atomgit.com/wfgyj/DBCheck/releases/download/drivers/drivers.zip"
 DRIVERS_DIR = "drivers"
 
 
