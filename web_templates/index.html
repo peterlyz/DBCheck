@@ -5253,10 +5253,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
               <div id="all-drivers-download-msg" style="font-size:12px;color:var(--text-muted);"></div>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button class="btn btn-primary" id="oracle-download-btn" onclick="downloadOracleClient()" style="padding:8px 20px;" data-i18n="webui.oracle_client_download_btn">
-                ⬇️ 一键下载 Oracle Client
-              </button>
-              <button class="btn btn-success" id="al-drivers-download-btn" onclick="downloadAllDrivers()" style="padding:8px 20px;" data-i18n="webui.all_drivers_download_btn">
+              <button class="btn btn-primary" id="al-drivers-download-btn" onclick="downloadAllDrivers()" style="padding:8px 20px;">
                 📦 一键下载所有驱动
               </button>
               <button class="btn btn-ghost" onclick="checkOracleClientStatus()" style="padding:8px 16px;" data-i18n="webui.oracle_client_check_btn">
