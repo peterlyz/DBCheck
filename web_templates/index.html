@@ -5220,91 +5220,67 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
       <!-- ══ Page: Oracle Client Settings ══ -->
       <div class="page" id="page-oracle-client">
         <div class="card">
-          <div class="card-title"><span>🔧</span> <span data-i18n="webui.oracle_client_title">数据库客户端设置</span></div>
-          <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line" data-i18n="webui.oracle_client_desc">
-            Oracle 11g 及以下版本需要 Oracle Instant Client 才能连接。<br/>
-            YashanDB 需要 YashanDB Client 驱动才能连接。<br/>
+          <div class="card-title"><span>🔧</span> <span data-i18n="webui.oracle_client_title">数据库驱动设置</span></div>
+          <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line">
+            配置数据库客户端库，用于连接需要本地驱动的数据库（Oracle、YashanDB）。<br/>
+            SQL Server 需要安装 Microsoft ODBC Driver（内置安装包可供使用）。<br/>
             <strong style="color:var(--warn)">注意：</strong>修改后需要重启 DBCheck 才能生效。
           </div>
 
-          <!-- 自动检测状态 -->
-          <div id="oracle-client-detect-status" style="display:none;padding:12px 16px;border-radius:8px;font-size:13px;margin-bottom:16px;line-height:1.6"></div>
-
-          <!-- 自动配置 -->
-          <div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;">
-            <div style="font-weight:600;font-size:14px;margin-bottom:10px">⬇️ <span data-i18n="webui.oracle_client_auto_config">自动配置</span></div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;line-height:1.6;" data-i18n="webui.oracle_client_auto_config_desc1">一键下载并解压 Oracle Instant Client Basic 和 YashanDB Client 到 DBCheck 项目目录，无需手动前往官网。</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;" data-i18n="webui.oracle_client_auto_config_desc2">当前下载版本：Oracle Instant Client 23.26，支持 Windows / Linux / macOS。</div>
+          <!-- 驱动自动配置 -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px;">⬇️ 驱动自动配置</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;line-height:1.6;">
+              一键下载并解压数据库客户端库到 DBCheck 目录，无需手动前往官网下载。
+            </div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
+              当前下载版本：Oracle Instant Client 23.26，支持 Windows / Linux / macOS。
+            </div>
             <div style="background:rgba(255,152,0,0.08);border:1px solid rgba(255,152,0,0.2);border-radius:6px;padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--text-muted);line-height:1.7;">
-              <strong style="color:var(--warn)">⚠️ Linux 用户注意：</strong>YashanDB Linux 驱动下载后为 <code>.tar.gz</code> 压缩包，需要手动解压到 <code>drivers/yashandb/lib</code> 目录（Windows 路径为 <code>drivers\yashandb\lib</code>）。可使用下方「检查安装状态」按钮确认。
-            </div>
-            <div id="oracle-download-progress" style="display:none;margin-bottom:12px;">
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;height:8px;overflow:hidden;margin-bottom:6px;">
-                <div id="oracle-download-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--primary),#4fc3f7);border-radius:6px;transition:width 0.3s;"></div>
-              </div>
-              <div id="oracle-download-msg" style="font-size:12px;color:var(--text-muted);"></div>
+              <strong style="color:var(--warn)">⚠️ Linux 用户注意：</strong>YashanDB Linux 驱动下载后为 <code>.tar.gz</code> 压缩包，需要手动解压到 <code>drivers/yashandb/lib</code> 目录。
             </div>
 
-            <!-- 所有驱动下载进度 -->
+            <!-- 下载进度 -->
             <div id="all-drivers-download-progress" style="display:none;margin-bottom:12px;">
               <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;height:8px;overflow:hidden;margin-bottom:6px;">
                 <div id="all-drivers-download-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--success),#66bb6a);border-radius:6px;transition:width 0.3s;"></div>
               </div>
               <div id="all-drivers-download-msg" style="font-size:12px;color:var(--text-muted);"></div>
             </div>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-              <button class="btn btn-primary" id="al-drivers-download-btn" onclick="downloadAllDrivers()" style="padding:8px 20px;">
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+              <button class="btn btn-primary" id="all-drivers-download-btn" onclick="downloadAllDrivers()" style="padding:8px 20px;">
                 📦 一键下载所有驱动
               </button>
-              <button class="btn btn-ghost" onclick="checkOracleClientStatus()" style="padding:8px 16px;" data-i18n="webui.oracle_client_check_btn">
+              <button class="btn btn-ghost" onclick="checkAllDriverStatus()" style="padding:8px 16px;font-size:12px;">
                 🔍 检查安装状态
               </button>
             </div>
+
+            <!-- 合并状态显示 -->
+            <div id="all-driver-status" style="display:none;padding:12px 16px;border-radius:8px;font-size:13px;line-height:1.6;"></div>
           </div>
 
-          <!-- 手动配置 -->
-          <div style="background:var(--surface2);border-radius:10px;padding:16px;">
-            <div style="font-weight:600;font-size:14px;margin-bottom:10px">✏️ <span data-i18n="webui.oracle_client_manual_config">手动配置</span></div>
+          <!-- 手动配置（高级） -->
+          <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;">
+            <div style="font-weight:600;font-size:14px;margin-bottom:10px;">✏️ 手动配置（高级）</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">
+              手动指定 Oracle Instant Client 路径，适用于已自行下载客户端库的场景。
+            </div>
             <div class="form-group">
               <label data-i18n="webui.oracle_client_path">Oracle Instant Client 路径</label>
               <input type="text" id="oracle-client-path" class="form-input" placeholder="例如：C:\oracle\instantclient_21_12 或 /usr/lib/oracle/21/client64/lib"/>
-              <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;white-space:pre-line" data-i18n="webui.oracle_client_path_hint">
-                 Windows 示例：C:\oracle\instantclient_21_12<br/>
-                 Linux 示例：/usr/lib/oracle/21/client64/lib<br/>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:6px;white-space:pre-line">
+                 Windows 示例：C:\oracle\instantclient_21_12
+                 Linux 示例：/usr/lib/oracle/21/client64/lib
                  留空则自动检测系统环境变量
               </div>
             </div>
-
             <div id="oracle-client-status" style="display:none;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:12px"></div>
-
             <div class="btn-row">
               <button class="btn btn-ghost" onclick="loadOracleClientConfig()" data-i18n="webui.oracle_client_reload">↻ 重新加载</button>
               <button class="btn btn-primary" onclick="saveOracleClientConfig()" data-i18n="webui.oracle_client_save_btn">💾 保存配置</button>
             </div>
-          </div>
-
-          <!-- SQL Server ODBC 驱动 -->
-          <div style="background:var(--surface2);border-radius:10px;padding:16px;margin-bottom:16px;">
-            <div style="font-weight:600;font-size:14px;margin-bottom:10px">🟠 SQL Server ODBC 驱动</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
-              SQL Server 连接需要 Microsoft ODBC Driver for SQL Server。<br/>
-              如果测试连接时报 <code>IM002</code> 错误，说明系统未安装该驱动。
-            </div>
-            <div style="background:rgba(33,150,243,0.08);border:1px solid rgba(33,150,243,0.2);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px;line-height:1.7;">
-              <div style="font-weight:600;margin-bottom:6px;">📥 下载安装</div>
-              <div>• Windows：下载 <code>msodbcsql18.msi</code> 或 <code>msodbcsql17.msi</code> 双击安装</div>
-              <div>• Linux (Ubuntu/Debian)：<code>sudo apt install msodbcsql18</code></div>
-              <div>• Linux (RHEL/CentOS)：<code>sudo yum install msodbcsql18</code></div>
-              <div style="margin-top:8px;">
-                <a href="https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server" target="_blank" style="color:var(--primary);text-decoration:none;font-weight:600;">
-                  🔗 官方下载页面 →
-                </a>
-              </div>
-            </div>
-            <div id="sqlserver-odbc-status" style="font-size:12px;padding:8px 12px;border-radius:6px;display:none;margin-bottom:8px;"></div>
-            <button class="btn btn-ghost" onclick="checkSqlServerOdbcStatus()" style="padding:8px 16px;font-size:12px;">
-              🔍 检测 ODBC 驱动状态
-            </button>
           </div>
         </div>
       </div>
@@ -5611,6 +5587,28 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
                 <option value="">全部</option>
               </select>
             </div>
+          </div>
+        </div>
+
+        <!-- 镜像设置（已内置国内镜像，隐藏此功能） -->
+        <div class="card" style="margin-bottom:12px;display:none;">
+          <div style="font-weight:600;font-size:14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleMirrorSettings()">
+            <span>🔗 镜像设置 <span style="font-size:12px;color:var(--text-muted);font-weight:400;">（解决国内网络无法访问 GitHub 问题）</span></span>
+            <span id="mirror-settings-toggle" style="font-size:12px;">▼</span>
+          </div>
+          <div id="mirror-settings-body" style="display:none;">
+            <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.6;">
+              插件市场 registry.json 托管在 GitHub，国内用户可能无法访问。<br/>
+              您可以添加国内镜像地址，系统会自动按顺序尝试所有镜像。
+            </div>
+            <div id="mirror-urls-list" style="margin-bottom:10px;"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-primary" onclick="saveMirrorUrls()" style="font-size:12px;padding:6px 14px;">💾 保存设置</button>
+              <button class="btn btn-ghost" onclick="resetMirrorUrls()" style="font-size:12px;padding:6px 14px;">↻ 恢复默认</button>
+              <button class="btn btn-ghost" onclick="addMirrorUrl()" style="font-size:12px;padding:6px 14px;">＋ 添加地址</button>
+              <button class="btn btn-ghost" onclick="saveBuiltinRegistry()" style="font-size:12px;padding:6px 14px;" title="将当前市场数据保存到本地，无网络时也可浏览插件列表">📦 保存为内置兜底</button>
+            </div>
+            <div id="mirror-settings-status" style="display:none;margin-top:8px;font-size:12px;padding:6px 10px;border-radius:6px;"></div>
           </div>
         </div>
 
@@ -6590,6 +6588,9 @@ function showPage(name) {
     'monitor-conn': [i18n('monitor.conn_title') || '活跃连接监控', i18n('monitor.conn_desc') || '实时查看各数据源连接数'],
     'data-management': [i18n('webui.data_management_title') || '数据管理', i18n('webui.data_management_desc') || '管理 DBCheck 自身数据文件'],
     'awr': [i18n('webui.awr_nav') || 'AWR 报告分析', i18n('webui.awr_desc') || '上传 Oracle AWR HTML 报告自动生成分析报告'],
+    'oracle-client': [i18n('webui.oracle_client_title') || '数据库驱动设置', ''],
+    'plugin-market': [i18n('webui.plugin_market_title') || '插件市场', ''],
+    'rag': [i18n('webui.rag_page_title') || 'RAG 知识库', ''],
   };
   const t = titles[name] || [name, ''];
   document.getElementById('topbar-title').textContent = t[0];
@@ -14321,11 +14322,35 @@ async function deleteBackupHistory(recordId) {
         el.style.border = '1px solid rgba(76,175,80,0.3)';
         el.style.color = '#4caf50';
       } else {
-        el.innerHTML =
-          `❌ <strong>未检测到 SQL Server ODBC 驱动</strong><br/>` +
-          `系统已安装 ODBC 驱动: ${data.installed && data.installed.length > 0 ? data.installed.map(d => '<code>' + d + '</code>').join(' / ') : '无'}<br/>` +
-          `请安装 <strong>Microsoft ODBC Driver 17/18 for SQL Server</strong> 后重试。<br/>` +
-          `<a href="https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server" target="_blank" style="color:var(--primary);font-weight:600;">🔗 点击前往官方下载页面 →</a>`;
+        // 未安装 ODBC 驱动，根据系统架构和本地 MSI 情况给出提示
+        let installHint = '';
+        const arch = data.system_arch || '未知';
+        if (data.local_msi_available && data.local_msi_path) {
+          // 有本地 MSI 安装包
+          const msiFile = data.local_msi_path.split(/[\\/]/).pop();
+          installHint =
+            `❌ <strong>未检测到 SQL Server ODBC 驱动</strong><br/>` +
+            `系统架构: <code>${arch}</code><br/>` +
+            `可以使用内置安装包进行安装:<br/>` +
+            `<code>${msiFile}</code><br/>` +
+            `安装包路径: <code>${data.local_msi_path}</code><br/>` +
+            `请手动运行该 MSI 文件完成安装，安装后重新检测。`;
+        } else if (data.msi_name) {
+          // 没有本地 MSI，但知道需要哪个
+          installHint =
+            `❌ <strong>未检测到 SQL Server ODBC 驱动</strong><br/>` +
+            `系统架构: <code>${arch}</code><br/>` +
+            `请安装 <strong>${data.msi_name.replace('.msi','')}</strong> 驱动后重试。<br/>` +
+            `<a href="${data.download_url}" target="_blank" style="color:var(--primary);font-weight:600;">🔗 点击前往官方下载页面 →</a>`;
+        } else {
+          // 未知架构
+          installHint =
+            `❌ <strong>未检测到 SQL Server ODBC 驱动</strong><br/>` +
+            `系统架构: <code>${arch}</code>（暂不支持自动识别）<br/>` +
+            `请前往官方下载页面选择对应驱动安装。<br/>` +
+            `<a href="${data.download_url}" target="_blank" style="color:var(--primary);font-weight:600;">🔗 点击前往官方下载页面 →</a>`;
+        }
+        el.innerHTML = installHint;
         el.style.background = 'rgba(244,67,54,0.08)';
         el.style.border = '1px solid rgba(244,67,54,0.3)';
         el.style.color = '#f44336';
@@ -14677,6 +14702,96 @@ async function deleteBackupHistory(recordId) {
       }
     }
   }
+
+  // ─── 合并驱动状态检测 ──────────────────────
+  async function checkAllDriverStatus() {
+    const el = document.getElementById('all-driver-status');
+    el.style.display = 'block';
+    el.innerHTML = '⏳ 正在检查所有驱动状态...';
+    el.style.background = 'var(--surface2)';
+    el.style.border = '1px solid var(--border)';
+    el.style.color = 'var(--text)';
+
+    try {
+      const res = await fetch('/api/driver_status');
+      const data = await res.json();
+      let html = '';
+      let allOk = true;
+
+      // Oracle Instant Client
+      const o = data.oracle || {};
+      if (o.installed) {
+        html += '<div style="margin-bottom:8px;">✅ <strong>Oracle Instant Client 已安装</strong><br/>' +
+          '版本: <code>' + (o.version || 'unknown') + '</code> · 平台: <code>' + (o.platform || '') + '</code><br/>' +
+          '路径: <code>' + (o.install_dir || '') + '</code></div>';
+      } else {
+        allOk = false;
+        html += '<div style="margin-bottom:8px;">❌ <strong>Oracle Instant Client 未安装</strong><br/>' +
+          '平台: <code>' + (o.platform || '') + '</code><br/>' +
+          '请点击上方"一键下载所有驱动"按钮自动安装。</div>';
+      }
+
+      // YashanDB Driver
+      const y = data.yashandb || {};
+      if (y.installed) {
+        html += '<div style="margin-bottom:8px;">✅ <strong>YashanDB Client 驱动已安装</strong><br/>' +
+          '平台: <code>' + (y.platform || '') + '</code><br/>' +
+          '路径: <code>' + (y.install_dir || '') + '</code></div>';
+      } else {
+        allOk = false;
+        html += '<div style="margin-bottom:8px;">❌ <strong>YashanDB Client 驱动未安装</strong><br/>' +
+          '请点击上方"一键下载所有驱动"按钮自动安装。</div>';
+      }
+
+      // SQL Server ODBC Driver
+      const d = data.odbc || {};
+      if (d.installed) {
+        const avail = (d.available || []).map(function(x) { return '<code>' + x + '</code>'; }).join(' / ');
+        html += '<div style="margin-bottom:8px;">✅ <strong>SQL Server ODBC 驱动已安装</strong><br/>' +
+          '已安装: ' + (avail || '无') + '<br/>' +
+          '将使用: <code>' + (d.using || '') + '</code></div>';
+      } else {
+        allOk = false;
+        const arch = d.system_arch || '未知';
+        let hint = '';
+        if (d.local_msi_available && d.local_msi_path) {
+          const msiFile = d.local_msi_path.split(/[\\\\/]/).pop();
+          hint = '❌ <strong>SQL Server ODBC 驱动未安装</strong><br/>' +
+            '系统架构: <code>' + arch + '</code><br/>' +
+            '可以使用内置安装包: <code>' + msiFile + '</code><br/>' +
+            '路径: <code>' + d.local_msi_path + '</code><br/>' +
+            '请手动运行该 MSI 文件完成安装，安装后重新检测。';
+        } else if (d.msi_name) {
+          hint = '❌ <strong>SQL Server ODBC 驱动未安装</strong><br/>' +
+            '系统架构: <code>' + arch + '</code><br/>' +
+            '请安装 <strong>' + d.msi_name.replace('.msi','') + '</strong> 后重试。<br/>' +
+            '<a href="' + d.download_url + '" target="_blank" style="color:var(--primary);font-weight:600;">🔗 官方下载页面 →</a>';
+        } else {
+          hint = '❌ <strong>SQL Server ODBC 驱动未安装</strong><br/>' +
+            '系统架构: <code>' + arch + '</code><br/>' +
+            '<a href="' + d.download_url + '" target="_blank" style="color:var(--primary);font-weight:600;">🔗 官方下载页面 →</a>';
+        }
+        html += '<div style="margin-bottom:8px;">' + hint + '</div>';
+      }
+
+      el.innerHTML = html;
+      if (allOk) {
+        el.style.background = 'rgba(76,175,80,0.08)';
+        el.style.border = '1px solid rgba(76,175,80,0.3)';
+        el.style.color = '#4caf50';
+      } else {
+        el.style.background = 'rgba(255,152,0,0.08)';
+        el.style.border = '1px solid rgba(255,152,0,0.3)';
+        el.style.color = '#ff9800';
+      }
+    } catch(e) {
+      el.innerHTML = '❌ 检测失败: ' + e.message;
+      el.style.background = 'rgba(244,67,54,0.08)';
+      el.style.border = '1px solid rgba(244,67,54,0.3)';
+      el.style.color = '#f44336';
+    }
+  }
+
   </script>
 
 <!-- ─── About Modal ───────────────────────────────────── -->
@@ -16402,6 +16517,173 @@ function mkdirRemote() {
   </script>
   <!-- ══ Plugin Market JS ══ -->
   <script>
+  // ─── 镜像设置 ──────────────────────
+
+  function toggleMirrorSettings() {
+    const body = document.getElementById('mirror-settings-body');
+    const toggle = document.getElementById('mirror-settings-toggle');
+    if (body.style.display === 'none') {
+      body.style.display = 'block';
+      toggle.textContent = '▶';
+      loadMirrorUrls();
+    } else {
+      body.style.display = 'none';
+      toggle.textContent = '▼';
+    }
+  }
+
+  async function loadMirrorUrls() {
+    try {
+      const res = await fetch('/api/plugin_market/registry_urls');
+      const data = await res.json();
+      if (data.ok) {
+        renderMirrorUrls(data.urls || []);
+      }
+    } catch(e) {
+      console.error('加载镜像地址失败:', e);
+    }
+  }
+
+  function renderMirrorUrls(urls) {
+    const list = document.getElementById('mirror-urls-list');
+    list.innerHTML = '';
+    if (!urls || urls.length === 0) {
+      list.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">暂无镜像地址</div>';
+      return;
+    }
+    urls.forEach(function(url, idx) {
+      const row = document.createElement('div');
+      row.style = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+      row.innerHTML =
+        '<span style="font-size:11px;color:var(--text-muted);width:20px;">' + (idx + 1) + '.</span>' +
+        '<input type="text" value="' + url + '" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--text);" placeholder="https://...">' +
+        '<button onclick="removeMirrorUrl(' + idx + ')" style="padding:4px 8px;border:none;background:rgba(244,67,54,0.1);color:#f44336;border-radius:6px;cursor:pointer;font-size:12px;">✕</button>';
+      list.appendChild(row);
+    });
+  }
+
+  function getMirrorUrlsFromUI() {
+    const list = document.getElementById('mirror-urls-list');
+    const inputs = list.querySelectorAll('input[type="text"]');
+    const urls = [];
+    inputs.forEach(function(input) {
+      const v = input.value.trim();
+      if (v) urls.push(v);
+    });
+    return urls;
+  }
+
+  function addMirrorUrl() {
+    const list = document.getElementById('mirror-urls-list');
+    const row = document.createElement('div');
+    row.style = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+    row.innerHTML =
+      '<span style="font-size:11px;color:var(--text-muted);width:20px;">' + (list.children.length + 1) + '.</span>' +
+      '<input type="text" value="" style="flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--surface2);color:var(--text);" placeholder="https://...">' +
+      '<button onclick="this.parentElement.remove()" style="padding:4px 8px;border:none;background:rgba(244,67,54,0.1);color:#f44336;border-radius:6px;cursor:pointer;font-size:12px;">✕</button>';
+    list.appendChild(row);
+  }
+
+  function removeMirrorUrl(idx) {
+    const list = document.getElementById('mirror-urls-list');
+    if (list.children[idx]) {
+      list.removeChild(list.children[idx]);
+      // 重新编号
+      for (let i = 0; i < list.children.length; i++) {
+        const span = list.children[i].querySelector('span');
+        if (span) span.textContent = (i + 1) + '.';
+      }
+    }
+  }
+
+  async function saveMirrorUrls() {
+    const statusEl = document.getElementById('mirror-settings-status');
+    const urls = getMirrorUrlsFromUI();
+    if (urls.length === 0) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = 'rgba(244,67,54,0.08)';
+      statusEl.style.color = '#f44336';
+      statusEl.textContent = '❌ 请至少添加一个镜像地址';
+      return;
+    }
+    try {
+      const res = await fetch('/api/plugin_market/registry_urls', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({urls: urls})
+      });
+      const data = await res.json();
+      statusEl.style.display = 'block';
+      if (data.ok) {
+        statusEl.style.background = 'rgba(76,175,80,0.08)';
+        statusEl.style.color = '#4caf50';
+        statusEl.textContent = '✅ ' + (data.msg || '保存成功');
+      } else {
+        statusEl.style.background = 'rgba(244,67,54,0.08)';
+        statusEl.style.color = '#f44336';
+        statusEl.textContent = '❌ ' + (data.error || '保存失败');
+      }
+    } catch(e) {
+      statusEl.style.display = 'block';
+      statusEl.style.background = 'rgba(244,67,54,0.08)';
+      statusEl.style.color = '#f44336';
+      statusEl.textContent = '❌ 保存失败: ' + e.message;
+    }
+  }
+
+  async function resetMirrorUrls() {
+    if (!confirm('确认恢复为默认镜像地址？（将清除自定义设置）')) return;
+    try {
+      const res = await fetch('/api/plugin_market/registry_urls/reset', {method: 'POST'});
+      const data = await res.json();
+      const statusEl = document.getElementById('mirror-settings-status');
+      statusEl.style.display = 'block';
+      if (data.ok) {
+        statusEl.style.background = 'rgba(76,175,80,0.08)';
+        statusEl.style.color = '#4caf50';
+        statusEl.textContent = '✅ ' + (data.msg || '已恢复默认');
+        renderMirrorUrls(data.urls || []);
+      } else {
+        statusEl.style.background = 'rgba(244,67,54,0.08)';
+        statusEl.style.color = '#f44336';
+        statusEl.textContent = '❌ ' + (data.error || '恢复失败');
+      }
+    } catch(e) {
+      const statusEl = document.getElementById('mirror-settings-status');
+      statusEl.style.display = 'block';
+      statusEl.style.background = 'rgba(244,67,54,0.08)';
+      statusEl.style.color = '#f44336';
+      statusEl.textContent = '❌ 恢复失败: ' + e.message;
+    }
+  }
+
+  async function saveBuiltinRegistry() {
+    const statusEl = document.getElementById('mirror-settings-status');
+    statusEl.style.display = 'block';
+    statusEl.style.background = 'rgba(255,152,0,0.08)';
+    statusEl.style.color = '#ff9800';
+    statusEl.textContent = '⏳ 正在保存内置 registry.json...';
+    try {
+      const res = await fetch('/api/plugin_market/save_builtin_registry', {method: 'POST'});
+      const data = await res.json();
+      if (data.ok) {
+        statusEl.style.background = 'rgba(76,175,80,0.08)';
+        statusEl.style.color = '#4caf50';
+        statusEl.textContent = '✅ ' + data.message;
+      } else {
+        statusEl.style.background = 'rgba(244,67,54,0.08)';
+        statusEl.style.color = '#f44336';
+        statusEl.textContent = '❌ ' + (data.message || data.error || '保存失败');
+      }
+    } catch(e) {
+      statusEl.style.background = 'rgba(244,67,54,0.08)';
+      statusEl.style.color = '#f44336';
+      statusEl.textContent = '❌ 保存失败: ' + e.message;
+    }
+  }
+
+  // ─── 插件市场加载 ──────────────────────
+
   async function loadMarketPlugins(force) {
     const grid = document.getElementById('market-plugins-grid');
     const loading = document.getElementById('market-plugins-loading');

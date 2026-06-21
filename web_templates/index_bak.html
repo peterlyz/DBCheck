@@ -3419,7 +3419,7 @@ function formatBytes(bytes) {
       <span class="icon">🤖</span> <span data-i18n="webui.nav_ai">AI 诊断设置</span>
     </div>
     <div class="nav-item" onclick="showPage('oracle-client')" id="nav-oracle-client">
-      <span class="icon">🔧</span> <span data-i18n="webui.nav_oracle_client">Oracle Client</span>
+      <span class="icon">🔧</span> <span data-i18n="webui.nav_oracle_client">数据库驱动设置</span>
     </div>
     <div class="nav-item" onclick="showPage('notifier')" id="nav-notifier">
       <span class="icon">📧</span> <span data-i18n="webui.nav_notifier">通知设置</span>
@@ -4450,7 +4450,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:5003/api/v1/inspect/{task_id}
       <!-- ══ Page: Oracle Client Settings ══ -->
       <div class="page" id="page-oracle-client">
         <div class="card">
-          <div class="card-title"><span>🗄️</span> <span data-i18n="webui.oracle_client_title">Oracle Client 设置</span></div>
+          <div class="card-title"><span>🗄️</span> <span data-i18n="webui.oracle_client_title">数据库驱动设置</span></div>
           <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px;line-height:1.7;white-space:pre-line" data-i18n="webui.oracle_client_desc">
             Oracle 11g 及以下版本需要 Oracle Instant Client 才能连接。<br/>
             请指定 Instant Client 的安装路径（包含 <code>oci.dll</code> / <code>libclntsh.so</code> 的目录）。<br/>
@@ -5226,6 +5226,9 @@ function showPage(name) {
     'remote-shell': [i18n('webui.nav_remote_shell') || '远程终端', i18n('webui.nav_remote_shell_desc') || 'SSH 远程终端'],
     'inspection-config': [i18n('webui.nav_inspection_config') || '巡检配置管理', '管理数据库巡检模板、章节和 SQL 查询'],
     shares: ['🔗 分享管理', '管理已生成的巡检报告分享链接'],
+    'oracle-client': [i18n('webui.oracle_client_title') || '数据库驱动设置', ''],
+    'plugin-market': [i18n('webui.plugin_market_title') || '插件市场', ''],
+    'rag': [i18n('webui.rag_page_title') || 'RAG 知识库', ''],
   };
   const t = titles[name] || [name, ''];
   document.getElementById('topbar-title').textContent = t[0];

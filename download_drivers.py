@@ -99,7 +99,6 @@ def download_drivers(target_dir=None, progress_callback=None):
                 result['success'] = True
                 result['oracle_installed'] = oracle_ok
                 result['yashandb_installed'] = yashandb_ok
-                result['error'] = '驱动目录已存在'
                 return result
 
         tmp_dir = tempfile.mkdtemp(prefix='dbcheck_drivers_')
@@ -141,6 +140,18 @@ def download_drivers(target_dir=None, progress_callback=None):
         print(f'[DBCheck Drivers] 正在解压到: {drivers_dir}')
         with zipfile.ZipFile(tmp_zip, 'r') as zf:
             zf.extractall(drivers_dir)
+
+        # 展平：如果解压后出现 drivers/ 嵌套目录，把内容移出来
+        nested_drivers = drivers_dir / 'drivers'
+        if nested_drivers.exists() and nested_drivers.is_dir():
+            print(f'[DBCheck Drivers] 检测到嵌套 drivers/ 目录，正在展平...')
+            for item in nested_drivers.iterdir():
+                target = drivers_dir / item.name
+                if target.exists():
+                    shutil.rmtree(target, ignore_errors=True) if item.is_dir() else os.remove(target)
+                shutil.move(str(item), str(target))
+            shutil.rmtree(nested_drivers, ignore_errors=True)
+            print(f'[DBCheck Drivers] 展平完成')
 
         # 清理临时文件
         if tmp_dir and os.path.exists(tmp_dir):

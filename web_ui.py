@@ -1526,6 +1526,61 @@ def api_save_config():
         json.dump(existing, f, ensure_ascii=False, indent=4)
     return jsonify({'ok': True})
 
+# ─── 插件市场镜像配置 API ─────────────────────────────
+
+@app.route('/api/plugin_market/registry_urls', methods=['GET'])
+def api_get_plugin_market_registry_urls():
+    """获取当前插件市场 registry URLs"""
+    try:
+        from plugin_market import get_market, DEFAULT_REGISTRY_URLS
+        market = get_market()
+        urls = market.get_registry_urls()
+        return jsonify({'ok': True, 'urls': urls, 'defaults': DEFAULT_REGISTRY_URLS})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+@app.route('/api/plugin_market/registry_urls', methods=['POST'])
+def api_save_plugin_market_registry_urls():
+    """保存用户自定义插件市场 registry URLs"""
+    data = request.json or {}
+    urls = data.get('urls', [])
+    if not isinstance(urls, list) or len(urls) == 0:
+        return jsonify({'ok': False, 'error': 'urls 必须是非空列表'}), 400
+    try:
+        from plugin_market import get_market
+        market = get_market()
+        ok = market.set_registry_urls(urls)
+        if ok:
+            return jsonify({'ok': True, 'msg': '插件市场镜像地址已保存'})
+        else:
+            return jsonify({'ok': False, 'error': '保存失败'}), 500
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+@app.route('/api/plugin_market/registry_urls/reset', methods=['POST'])
+def api_reset_plugin_market_registry_urls():
+    """重置为默认镜像地址"""
+    try:
+        from plugin_market import get_market, DEFAULT_REGISTRY_URLS
+        market = get_market()
+        market.set_registry_urls(DEFAULT_REGISTRY_URLS)
+        return jsonify({'ok': True, 'msg': '已重置为默认镜像地址', 'urls': DEFAULT_REGISTRY_URLS})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/plugin_market/save_builtin_registry', methods=['POST'])
+def api_save_builtin_registry():
+    """保存当前市场数据到内置 registry.json（离线兜底）"""
+    try:
+        from plugin_market import get_market
+        market = get_market()
+        result = market.save_builtin_registry()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
 # ─── Oracle Client 下载 & 状态 API ─────────────────────────────
 def _get_oracle_platform_key():
     """根据系统返回 oracle_client 子目录名"""
@@ -1550,9 +1605,13 @@ _all_drivers_download_progress = {'progress': 0, 'status': 'idle', 'message': ''
 
 def _check_oracle_client_installed(platform_key=None):
     """检查 Oracle Instant Client 是否已安装，返回 dict"""
+    import sys
     if platform_key is None:
         platform_key = _get_oracle_platform_key()
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
     install_dir = os.path.join(base_dir, 'drivers', 'oracle_client', platform_key)
 
     # 检测标记文件（基本库 + 核心运行时）
@@ -1620,6 +1679,136 @@ def api_yashandb_driver_status():
         return jsonify({'installed': False, 'platform': '', 'install_dir': '', 'version': 'unknown', 'error': str(e)})
 
 
+@app.route('/api/sqlserver_odbc_status', methods=['GET'])
+def api_sqlserver_odbc_status():
+    """获取 SQL Server ODBC 驱动安装状态，检测系统架构并提示安装"""
+    try:
+        import pyodbc
+        installed = [d for d in pyodbc.drivers() if d.strip()]
+        preferred = ['ODBC Driver 18 for SQL Server', 'ODBC Driver 17 for SQL Server',
+                     'ODBC Driver 13 for SQL Server', 'SQL Server']
+        best = None
+        for d in preferred:
+            if d in installed:
+                best = d
+                break
+
+        # 检测系统架构
+        import platform, sys, os
+        machine = platform.machine().lower()
+        if machine in ('amd64', 'x86_64'):
+            sys_arch = 'x64'
+            msi_name = 'msodbcsql_x64.msi'
+        elif machine in ('x86', 'i386', 'i686'):
+            sys_arch = 'x86'
+            msi_name = 'msodbcsql_x86.msi'
+        elif machine in ('arm64', 'aarch64'):
+            sys_arch = 'arm64'
+            msi_name = 'msodbcsql_arm64.msi'
+        else:
+            sys_arch = machine
+            msi_name = None
+
+        # 检查本地 drivers/sqlserver/ 下是否有对应的 MSI
+        # 路径逻辑：PyInstaller 打包后用 exe 所在目录，开发模式下用 __file__ 所在目录
+        local_msi_path = None
+        if msi_name:
+            if getattr(sys, 'frozen', False):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+            msi_path = os.path.join(base_dir, 'drivers', 'sqlserver', msi_name)
+            if os.path.isfile(msi_path):
+                local_msi_path = msi_path
+
+        download_url = 'https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server'
+
+        return jsonify({
+            'ok': True,
+            'available': installed,
+            'using': best or (installed[0] if installed else ''),
+            'best_driver': best,
+            'system_arch': sys_arch,
+            'msi_name': msi_name,
+            'local_msi_available': local_msi_path is not None,
+            'local_msi_path': local_msi_path,
+            'download_url': download_url
+        })
+    except Exception as e:
+        return jsonify({'ok': False, 'available': [], 'using': '', 'best_driver': None, 'error': str(e)})
+
+
+@app.route('/api/driver_status', methods=['GET'])
+def api_driver_status():
+    """获取所有数据库客户端驱动的安装状态（合并）"""
+    import sys, os, platform
+    result = {
+        'oracle': {'ok': False, 'installed': False},
+        'yashandb': {'ok': False, 'installed': False},
+        'odbc': {'ok': False, 'installed': False}
+    }
+    # 1. Oracle Instant Client
+    try:
+        platform_key = request.args.get('platform') or None
+        oracle_status = _check_oracle_client_installed(platform_key)
+        result['oracle'] = {'ok': True}
+        result['oracle'].update(oracle_status)
+    except Exception as e:
+        result['oracle']['error'] = str(e)
+    # 2. YashanDB Driver
+    try:
+        import download_drivers
+        import importlib
+        importlib.reload(download_drivers)
+        dr = download_drivers.check_all_drivers()
+        y = dr.get('yashandb', {})
+        result['yashandb'] = {
+            'ok': True,
+            'installed': y.get('installed', False),
+            'platform': y.get('platform', ''),
+            'install_dir': y.get('install_dir', '')
+        }
+    except Exception as e:
+        result['yashandb']['error'] = str(e)
+    # 3. SQL Server ODBC Driver
+    try:
+        import pyodbc
+        installed = [d for d in pyodbc.drivers() if d.strip()]
+        preferred = ['ODBC Driver 18 for SQL Server', 'ODBC Driver 17 for SQL Server',
+                     'ODBC Driver 13 for SQL Server', 'SQL Server']
+        best = next((d for d in preferred if d in installed), None)
+        machine = platform.machine().lower()
+        if machine in ('amd64', 'x86_64'):
+            sys_arch, msi_name = 'x64', 'msodbcsql_x64.msi'
+        elif machine in ('x86', 'i386', 'i686'):
+            sys_arch, msi_name = 'x86', 'msodbcsql_x86.msi'
+        elif machine in ('arm64', 'aarch64'):
+            sys_arch, msi_name = 'arm64', 'msodbcsql_arm64.msi'
+        else:
+            sys_arch, msi_name = machine, None
+        local_msi_path = None
+        if msi_name:
+            base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+            msi_path = os.path.join(base_dir, 'drivers', 'sqlserver', msi_name)
+            if os.path.isfile(msi_path):
+                local_msi_path = msi_path
+        result['odbc'] = {
+            'ok': True,
+            'installed': len(installed) > 0,
+            'available': installed,
+            'using': best or (installed[0] if installed else ''),
+            'best_driver': best,
+            'system_arch': sys_arch,
+            'msi_name': msi_name,
+            'local_msi_available': local_msi_path is not None,
+            'local_msi_path': local_msi_path,
+            'download_url': 'https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server'
+        }
+    except Exception as e:
+        result['odbc']['error'] = str(e)
+    return jsonify(result)
+
+
 @app.route('/api/oracle_client_download', methods=['POST'])
 def api_oracle_client_download():
     """
@@ -1634,10 +1823,12 @@ def api_oracle_client_download():
     if status['installed']:
         return jsonify({'ok': True, 'already_installed': True, 'message': f"Oracle Instant Client {status['version']} 已安装", **status})
 
-    import threading
-    import json as _json
+    import threading, json as _json, sys
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
     # 重置全局下载状态
     _oracle_client_download_progress.update({'progress': 0, 'status': 'downloading', 'message': '正在启动下载...', 'error': None})
@@ -1716,9 +1907,12 @@ def api_download_all_drivers():
     1. 下载 drivers.zip（通用驱动）
     2. 下载对应平台的 Oracle Instant Client
     """
-    import threading
+    import threading, sys
 
-    base_dir = os.path.dirname(os.path.abspath(__file__))
+    if getattr(sys, 'frozen', False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
 
     # 重置全局下载状态
     global _all_drivers_download_progress
@@ -4216,7 +4410,11 @@ def api_pro_datasources_test_conn():
                             _subdir, _marker, _core_marker = None, None, None
 
                         if _subdir:
-                            _base_dir = os.path.dirname(os.path.abspath(__file__))
+                            import sys
+                            if getattr(sys, 'frozen', False):
+                                _base_dir = os.path.dirname(sys.executable)
+                            else:
+                                _base_dir = os.path.dirname(os.path.abspath(__file__))
                             _bundled = os.path.join(_base_dir, 'drivers', 'oracle_client', _subdir)
                             if os.path.isdir(_bundled) and os.path.isfile(os.path.join(_bundled, _marker)):
                                 try:
@@ -4366,7 +4564,11 @@ def _connect_oracle_thick_fallback(user, password, dsn, sysdba=False):
             else:
                 _subdir, _marker = None, None
             if _subdir:
-                _base_dir = os.path.dirname(os.path.abspath(__file__))
+                import sys
+                if getattr(sys, 'frozen', False):
+                    _base_dir = os.path.dirname(sys.executable)
+                else:
+                    _base_dir = os.path.dirname(os.path.abspath(__file__))
                 _bundled = os.path.join(_base_dir, 'drivers', 'oracle_client', _subdir)
                 if os.path.isdir(_bundled) and os.path.isfile(os.path.join(_bundled, _marker)):
                     try:

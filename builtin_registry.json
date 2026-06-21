@@ -1,0 +1,20 @@
+{
+  "version": "1",
+  "更新时间": "2026-06-21",
+  "说明": "DBCheck 插件市场内置索引（离线兜底用，通过网络自动更新）",
+  "plugins": [
+    {
+      "id": "dbcheck-charset-audit",
+      "name": "字符集审计",
+      "description": "审计数据库字符集配置，检测潜在乱码风险（Oracle / MySQL / PostgreSQL）",
+      "version": "1.0.0",
+      "category": "audit",
+      "tags": ["字符集", "审计", "oracle", "mysql", "postgresql"],
+      "author": "fiyo",
+      "official": true,
+      "download": "https://github.com/fiyo/dbcheck-plugins/releases/download/v1.0.0/dbcheck-charset-audit-1.0.0.zip",
+      "sha256": "",
+      "min_version": "2.6.0"
+    }
+  ]
+}
