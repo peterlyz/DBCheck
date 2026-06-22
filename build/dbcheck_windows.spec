@@ -22,6 +22,7 @@ data_files = [
     'dbc_config.json',
     'scheduler_jobs.json',
     'version.json',
+    'builtin_registry.json',
 ]
 
 # Build datas list with absolute paths

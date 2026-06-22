@@ -1,4 +1,4 @@
-# coding: utf-8
+﻿# coding: utf-8
 #
 # Copyright (c) 2025-2026 fiyo (Jack Ge) <sdfiyon@gmail.com>
 #
@@ -18,8 +18,14 @@ gevent.monkey.patch_all()
 import os, sys, platform, threading, datetime, json, uuid, time, re, random, sqlite3
 from pathlib import Path
 
+# 全局基础目录（开发模式用 __file__，PyInstaller 打包后用 exe 目录）
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # ── 确保项目根目录在 sys.path（支持各种启动方式）──────────────────
-_script_dir = os.path.dirname(os.path.abspath(__file__))
+_script_dir = BASE_DIR
 if _script_dir not in sys.path:
     sys.path.insert(0, _script_dir)
 
@@ -29,8 +35,9 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import socket
 from i18n import t as _t
 
+
+
 # ── GBase 8s JDBC 支持（jaydebeapi 需要 JAVA_HOME）─────────────────
-import os
 _GBASE_JAVA_CANDIDATES = [
     os.environ.get('JAVA_HOME', ''),
     'C:\\Program Files\\Java\\jdk-11',
@@ -120,7 +127,7 @@ def _sync_delete_trend_for_report(filename: str):
     """删除报告时同步删除对应的趋势数据（若无剩余报告）"""
     try:
         from analyzer import HistoryManager
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_dir = BASE_DIR
         hm = HistoryManager(script_dir)
         reports_dir = os.path.join(script_dir, 'reports')
 
@@ -248,13 +255,13 @@ def format_bytes(n):
     except: return str(n)
 
 def get_reports():
-    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+    reports_dir = os.path.join(BASE_DIR, 'reports')
     reports = []
     # 读取 pro_history.db 中的风险统计，key 为报告文件名
     risk_map = {}
     try:
         import sqlite3
-        pro_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pro_data', 'pro_history.db')
+        pro_db = os.path.join(BASE_DIR, 'pro_data', 'pro_history.db')
         if os.path.isfile(pro_db):
             conn = sqlite3.connect(pro_db)
             cursor = conn.cursor()
@@ -624,7 +631,7 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
 
         inspector_nm = db_info.get('inspector_name') or inspector_name or 'Jack'
 
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        reports_dir = os.path.join(BASE_DIR, 'reports')
         os.makedirs(reports_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         filename_tmpl = _t(cfg['filename_key'])
@@ -683,7 +690,7 @@ def run_inspection_task(task_id, db_info, inspector_name, template_id=None):
         # 历史快照
         try:
             from analyzer import HistoryManager
-            hm = HistoryManager(os.path.dirname(os.path.abspath(__file__)))
+            hm = HistoryManager(BASE_DIR)
             hm.save_snapshot(
                 db_type=cfg['history_db_type'],
                 host=db_info['ip'],
@@ -800,7 +807,7 @@ def run_config_task(task_id, db_info, output_format='txt'):
 
     try:
         db_type = db_info.get('db_type', 'mysql')
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        reports_dir = os.path.join(BASE_DIR, 'reports')
         os.makedirs(reports_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -880,7 +887,7 @@ def run_index_task(task_id, db_info, output_format='txt'):
 
     try:
         db_type = db_info.get('db_type', 'mysql')
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        reports_dir = os.path.join(BASE_DIR, 'reports')
         os.makedirs(reports_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
 
@@ -1065,7 +1072,7 @@ def test_oracle_connection(host, port, user, password, service_name='ORCL', sysd
                     else:
                         _sub, _mk = None, None
                     if _sub:
-                        _base = os.path.dirname(os.path.abspath(__file__))
+                        _base = BASE_DIR
                         _bd = os.path.join(_base, 'drivers', 'oracle_client', _sub)
                         if os.path.isdir(_bd) and os.path.isfile(os.path.join(_bd, _mk)):
                             try:
@@ -1259,7 +1266,7 @@ def api_reports():
 def api_report_detail(filename):
     """获取报告详情（用于分享）"""
     try:
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        reports_dir = os.path.join(BASE_DIR, 'reports')
         fp = os.path.join(reports_dir, filename)
         if not os.path.isfile(fp):
             return jsonify({'ok': False, 'msg': '报告文件不存在'}), 404
@@ -1267,7 +1274,7 @@ def api_report_detail(filename):
         # 从 pro_history.db 获取详情
         result = {'filename': filename, 'db_type': '', 'host': ''}
         try:
-            pro_db = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pro_data', 'pro_history.db')
+            pro_db = os.path.join(BASE_DIR, 'pro_data', 'pro_history.db')
             if os.path.isfile(pro_db):
                 conn = sqlite3.connect(pro_db)
                 cursor = conn.cursor()
@@ -1348,7 +1355,7 @@ def api_download_by_task(task_id):
 @app.route('/api/download_file')
 def api_download_file():
     name = request.args.get('name', '')
-    reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+    reports_dir = os.path.join(BASE_DIR, 'reports')
     fp = os.path.join(reports_dir, name)
     if not os.path.isfile(fp):
         return "File not found", 404
@@ -1362,7 +1369,7 @@ def api_delete_report():
         name = data.get('name', '')
         if not name:
             return jsonify({'ok': False, 'error': _t('webui.reports_delete_name_required')}), 400
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        reports_dir = os.path.join(BASE_DIR, 'reports')
         fp = os.path.join(reports_dir, name)
         if not os.path.isfile(fp):
             return jsonify({'ok': False, 'error': _t('webui.reports_file_not_found')}), 404
@@ -1389,7 +1396,7 @@ def api_history_instances():
     """返回有报告文件的数据库实例列表"""
     try:
         from analyzer import HistoryManager
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_dir = BASE_DIR
         reports_dir = os.path.join(script_dir, 'reports')
         hm = HistoryManager(script_dir)
         raw_instances = hm.list_instances()
@@ -1434,7 +1441,7 @@ def api_trend():
         return jsonify({'ok': False, 'error': _t('webui.err_missing_host_port')})
     try:
         from analyzer import HistoryManager
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        script_dir = BASE_DIR
         hm = HistoryManager(script_dir)
         trend = hm.get_trend(db_type, host, int(port))
         comparison = hm.get_comparison(db_type, host, int(port))
@@ -1444,7 +1451,7 @@ def api_trend():
 
 @app.route('/api/ai_config', methods=['GET'])
 def api_ai_config():
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbc_config.json')
+    cfg_path = os.path.join(BASE_DIR, 'dbc_config.json')
     if os.path.exists(cfg_path):
         with open(cfg_path, 'r', encoding='utf-8') as f:
             cfg = json.load(f)
@@ -1468,7 +1475,7 @@ def api_ai_config():
 @app.route('/api/ai_config', methods=['POST'])
 def api_save_ai_config():
     data = request.json or {}
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbc_config.json')
+    cfg_path = os.path.join(BASE_DIR, 'dbc_config.json')
 
     # 加载现有配置作为基础
     existing = {}
@@ -1496,7 +1503,7 @@ def api_save_ai_config():
 
 @app.route('/api/config', methods=['GET'])
 def api_get_config():
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbc_config.json')
+    cfg_path = os.path.join(BASE_DIR, 'dbc_config.json')
     if not os.path.exists(cfg_path):
         return jsonify({})
     with open(cfg_path, 'r', encoding='utf-8') as f:
@@ -1511,7 +1518,7 @@ def api_get_config():
 @app.route('/api/config', methods=['POST'])
 def api_save_config():
     data = request.json or {}
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbc_config.json')
+    cfg_path = os.path.join(BASE_DIR, 'dbc_config.json')
     existing = {}
     if os.path.exists(cfg_path):
         with open(cfg_path, 'r', encoding='utf-8') as f:
@@ -1611,7 +1618,7 @@ def _check_oracle_client_installed(platform_key=None):
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = BASE_DIR
     install_dir = os.path.join(base_dir, 'drivers', 'oracle_client', platform_key)
 
     # 检测标记文件（基本库 + 核心运行时）
@@ -1716,7 +1723,7 @@ def api_sqlserver_odbc_status():
             if getattr(sys, 'frozen', False):
                 base_dir = os.path.dirname(sys.executable)
             else:
-                base_dir = os.path.dirname(os.path.abspath(__file__))
+                base_dir = BASE_DIR
             msi_path = os.path.join(base_dir, 'drivers', 'sqlserver', msi_name)
             if os.path.isfile(msi_path):
                 local_msi_path = msi_path
@@ -1788,7 +1795,7 @@ def api_driver_status():
             sys_arch, msi_name = machine, None
         local_msi_path = None
         if msi_name:
-            base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+            base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else BASE_DIR
             msi_path = os.path.join(base_dir, 'drivers', 'sqlserver', msi_name)
             if os.path.isfile(msi_path):
                 local_msi_path = msi_path
@@ -1828,7 +1835,7 @@ def api_oracle_client_download():
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = BASE_DIR
 
     # 重置全局下载状态
     _oracle_client_download_progress.update({'progress': 0, 'status': 'downloading', 'message': '正在启动下载...', 'error': None})
@@ -1836,7 +1843,7 @@ def api_oracle_client_download():
     def _do_download():
         try:
             sys_path_added = False
-            script_dir = os.path.dirname(os.path.abspath(__file__))
+            script_dir = BASE_DIR
             if script_dir not in sys.path:
                 sys.path.insert(0, script_dir)
                 sys_path_added = True
@@ -1912,7 +1919,7 @@ def api_download_all_drivers():
     if getattr(sys, 'frozen', False):
         base_dir = os.path.dirname(sys.executable)
     else:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = BASE_DIR
 
     # 重置全局下载状态
     global _all_drivers_download_progress
@@ -3531,7 +3538,7 @@ def api_awr_upload():
             return jsonify({'ok': False, 'error': '仅支持 .html/.htm 格式的 AWR 报告'})
 
         import tempfile, shutil
-        awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+        awr_dir = os.path.join(BASE_DIR, 'awr_uploads')
         os.makedirs(awr_dir, exist_ok=True)
 
         # 保存上传文件
@@ -3689,7 +3696,7 @@ def _run_awr_report_task(report_task_id, awr_task_id):
     if not task:
         return
     steps = task['steps']
-    awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+    awr_dir = os.path.join(BASE_DIR, 'awr_uploads')
     import glob
     files = glob.glob(os.path.join(awr_dir, f'awr_{awr_task_id}.*'))
     if not files:
@@ -3724,7 +3731,7 @@ def _run_awr_report_task(report_task_id, awr_task_id):
 
         # Step 3: 生成 Word
         task['current_step'] = len(steps) - 2
-        reports_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reports')
+        reports_dir = os.path.join(BASE_DIR, 'reports')
         os.makedirs(reports_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
         meta = awr_data.get('metadata', {})
@@ -3752,7 +3759,7 @@ def _run_awr_report_task(report_task_id, awr_task_id):
 def api_awr_generate_report(awr_task_id):
     """启动 AWR Word 报告异步生成任务，返回 report_task_id 供轮询"""
     try:
-        awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+        awr_dir = os.path.join(BASE_DIR, 'awr_uploads')
         import glob
         files = glob.glob(os.path.join(awr_dir, f'awr_{awr_task_id}.*'))
         if not files:
@@ -3798,7 +3805,7 @@ def api_awr_report_status(report_task_id):
 @app.route('/api/awr/status/<task_id>', methods=['GET'])
 def api_awr_status(task_id):
     """查询 AWR 任务文件是否存在"""
-    awr_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'awr_uploads')
+    awr_dir = os.path.join(BASE_DIR, 'awr_uploads')
     import glob
     files = glob.glob(os.path.join(awr_dir, f'awr_{task_id}.*'))
     if files:
@@ -3814,7 +3821,7 @@ def api_rag_ollama_status():
         return jsonify({'ok': False, 'error': 'RAG 模块未加载'})
     try:
         # 读取当前 backend 配置
-        cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbc_config.json')
+        cfg_path = os.path.join(BASE_DIR, 'dbc_config.json')
         backend = 'ollama'
         try:
             with open(cfg_path, 'r', encoding='utf-8') as f:
@@ -4291,7 +4298,7 @@ def api_pro_datasource_delete(instance_id):
         if result.get('ok') and inst:
             try:
                 from analyzer import HistoryManager
-                script_dir = os.path.dirname(os.path.abspath(__file__))
+                script_dir = BASE_DIR
                 hm = HistoryManager(script_dir)
                 db_type = inst.get('db_type', '')
                 host = inst.get('host', '')
@@ -4414,7 +4421,7 @@ def api_pro_datasources_test_conn():
                             if getattr(sys, 'frozen', False):
                                 _base_dir = os.path.dirname(sys.executable)
                             else:
-                                _base_dir = os.path.dirname(os.path.abspath(__file__))
+                                _base_dir = BASE_DIR
                             _bundled = os.path.join(_base_dir, 'drivers', 'oracle_client', _subdir)
                             if os.path.isdir(_bundled) and os.path.isfile(os.path.join(_bundled, _marker)):
                                 try:
@@ -4568,7 +4575,7 @@ def _connect_oracle_thick_fallback(user, password, dsn, sysdba=False):
                 if getattr(sys, 'frozen', False):
                     _base_dir = os.path.dirname(sys.executable)
                 else:
-                    _base_dir = os.path.dirname(os.path.abspath(__file__))
+                    _base_dir = BASE_DIR
                 _bundled = os.path.join(_base_dir, 'drivers', 'oracle_client', _subdir)
                 if os.path.isdir(_bundled) and os.path.isfile(os.path.join(_bundled, _marker)):
                     try:
@@ -4645,7 +4652,7 @@ def api_ds_databases(ds_id):
         elif db_type == 'gbase':
             # GBase 8s 使用 JDBC 连接（jaydebeapi）
             import jaydebeapi, os
-            _jdbc_driver = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'drivers', 'gbase', 'gbase-jdbc.jar')
+            _jdbc_driver = os.path.join(BASE_DIR, 'drivers', 'gbase', 'gbase-jdbc.jar')
             _db = inst.get('database', 'gbase01') or 'gbase01'
             _server = inst.get('gbase_server_name', 'gbase01') or 'gbase01'
             _jdbc_url  = f"jdbc:gbasedbt-sqli://{host}:{int(port)}/{_db}:GBASEDBTSERVER={_server};"
@@ -4783,7 +4790,7 @@ def api_ds_objects(ds_id):
         elif db_type == 'gbase':
             # GBase 8s 使用 JDBC 连接（jaydebeapi）
             import jaydebeapi, os
-            _jdbc_driver = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'drivers', 'gbase', 'gbase-jdbc.jar')
+            _jdbc_driver = os.path.join(BASE_DIR, 'drivers', 'gbase', 'gbase-jdbc.jar')
             _db = database or 'gbase01'
             _server = inst.get('gbase_server_name', 'gbase01') or 'gbase01'
             _jdbc_url  = f"jdbc:gbasedbt-sqli://{host}:{int(port)}/{_db}:GBASEDBTSERVER={_server};"
@@ -5482,7 +5489,7 @@ def _ensure_sql_exec_log_table():
         from pro import get_instance_manager
         im = get_instance_manager()
         # 使用 pro.db
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pro_data', 'pro.db')
+        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
         conn = sqlite3.connect(db_path)
@@ -5515,7 +5522,7 @@ def _log_sql_execution(datasource_id: str, datasource_name: str, sql: str,
     _ensure_sql_exec_log_table()
 
     try:
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pro_data', 'pro.db')
+        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("""
@@ -5842,7 +5849,7 @@ def api_inspection_execute_sql():
 def api_inspection_sql_logs():
     """获取 SQL 执行日志"""
     try:
-        db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pro_data', 'pro.db')
+        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
         if not os.path.exists(db_path):
             return jsonify({'ok': True, 'logs': []})
 
@@ -5885,7 +5892,7 @@ def api_inspection_sql_logs():
 
 def _load_ai_config():
     """加载 AI 配置"""
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbc_config.json')
+    cfg_path = os.path.join(BASE_DIR, 'dbc_config.json')
     if os.path.exists(cfg_path):
         with open(cfg_path, 'r', encoding='utf-8') as f:
             return json.load(f).get('ai', {})
@@ -7085,7 +7092,7 @@ def api_home_stats():
         'template_count': 0,
     }
     try:
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = BASE_DIR
 
         # 1. 巡检次数（Pro版 data/history.db 中的 snapshots JOIN history_instances）
         history_db = os.path.join(base_dir, 'data', 'history.db')
@@ -7323,7 +7330,7 @@ def _load_quotes():
         return _quotes_cache
     try:
         import json as _json
-        _quotes_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'dbcheck-quotes.json')
+        _quotes_file = os.path.join(BASE_DIR, 'dbcheck-quotes.json')
         with open(_quotes_file, 'r', encoding='utf-8') as f:
             data = _json.load(f)
         _quotes_cache = data.get('quotes', [])
@@ -7334,7 +7341,12 @@ def _load_quotes():
 @app.route('/version.json', methods=['GET'])
 def api_version_json():
     """返回版本信息 JSON，供登录页动态加载版本号"""
-    vpath = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'version.json')
+    # PyInstaller 打包后 __file__ 指向 _internal 目录，需用 sys.executable 定位
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+    else:
+        base = BASE_DIR
+    vpath = os.path.join(base, 'version.json')
     if os.path.exists(vpath):
         return send_file(vpath, mimetype='application/json')
     return jsonify({'version': 'v2.5.1'})
