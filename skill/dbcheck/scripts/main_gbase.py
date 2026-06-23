@@ -17,6 +17,7 @@ JDBC 驱动默认路径：DBCheck 安装目录/drivers/gbase/jdbc-3.5.1.jar
 可通过环境变量 GBase_JDBC_DRIVER 指定自定义路径。
 """
 
+
 import os
 import sys
 import warnings

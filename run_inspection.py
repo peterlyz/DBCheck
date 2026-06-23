@@ -19,6 +19,7 @@ DBCheck 非交互式巡检脚本
 3. 索引健康分析（--check-indexes）：分析缺失/冗余/未使用索引
 4. PDF 导出（--to-pdf）：将已生成的 DOCX 报告转换为 PDF
 
+
 用法（完整巡检）:
   python run_inspection.py --type mysql --host 127.0.0.1 --port 3306 \
       --user root --password secret --label "生产库" --inspector "张三"

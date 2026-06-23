@@ -19,6 +19,7 @@ KingbaseES 数据库自动化健康巡检工具 {VER}
 注意: KingbaseES 是 PostgreSQL 兼容的国产数据库，使用 psycopg2 驱动
 """
 
+
 import warnings
 warnings.filterwarnings("ignore")
 
