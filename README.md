@@ -386,7 +386,7 @@ This project references the following works:
 >
 > Thank you for being part of the DBCheck community.
 
-<img src="snapshot/pay-en.png" alt="QR Code" width="400" />
+<img src="snapshot/pay-en.png" alt="QR Code" width="800" />
 
 <img src="snapshot/dbcheck-badge.png" alt="DBCheck Supporter Badge" width="120" />
 
