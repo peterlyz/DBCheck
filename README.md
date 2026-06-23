@@ -378,9 +378,15 @@ This project references the following works:
 
 ## Support the Project
 
-If this tool has been helpful, please consider supporting ongoing development:
+> ❤️ Thank you for supporting DBCheck.
+>
+> DBCheck is and will remain open source and free to use. Donations are entirely optional and help cover the time, infrastructure, and ongoing effort required to maintain and improve the project.
+>
+> If you find DBCheck useful, your support is appreciated. If not, that's completely okay too. A GitHub Star, bug report, feature suggestion, code contribution, or simply sharing the project with others is equally valuable.
+>
+> Thank you for being part of the DBCheck community.
 
-<!-- <img src="snapshot/pay-en.png" alt="QR Code" width="400" /> -->
+<img src="snapshot/pay-en.png" alt="QR Code" width="400" />
 
 <img src="snapshot/dbcheck-badge.png" alt="DBCheck Supporter Badge" width="120" />
 
