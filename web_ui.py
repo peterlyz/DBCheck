@@ -12,8 +12,8 @@ DBCheck Web UI - Flask 应用
 数据库巡检工具 Web 界面
 """
 # gevent monkey patch 必须放在所有 import 之前
-import gevent.monkey
-gevent.monkey.patch_all()
+# import gevent.monkey
+# gevent.monkey.patch_all()
 
 import os, sys, platform, threading, datetime, json, uuid, time, re, random, sqlite3
 from pathlib import Path
@@ -225,48 +225,58 @@ _rag_manager = None
 # AI 聊天会话历史（key: session_id, value: list of {role, content}）
 _chat_sessions = {}
 _CHAT_HISTORY_LIMIT = 20  # 每个会话最多保留 20 条消息
-_CHAT_SUMMARY_THRESHOLD = 20  # 历史超过此条数时触发 LLM 摘要
-
-def _init_chat_db():
-    """初始化 chat_history 表（如果不存在）"""
-    db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
-    os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    conn.execute("""CREATE TABLE IF NOT EXISTS chat_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        role TEXT NOT NULL,
-        content TEXT NOT NULL,
-        timestamp REAL DEFAULT (strftime('%s', 'now'))
-    )""")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id, timestamp)")
-    conn.commit()
-    conn.close()
-
-def _load_session_from_db(session_id: str) -> list:
-    """从 DB 加载会话历史"""
-    db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
-    if not os.path.exists(db_path):
-        return []
-    import sqlite3
-    conn = sqlite3.connect(db_path)
-    cur = conn.execute(
-        "SELECT role, content FROM chat_history WHERE session_id = ? ORDER BY timestamp, id",
-        (session_id,)
-    )
-    rows = cur.fetchall()
-    conn.close()
-    return [{'role': r[0], 'content': r[1]} for r in rows]
-
 
 # ── 用户认证 ───────────────────────────────────────────────
 from auth import init_default_user, register_auth_routes
 init_default_user()
 register_auth_routes(app)
 
-# 初始化 AI 聊天历史 DB 表
-_init_chat_db()
+# ── RBAC 用户管理模块注册 ──────────────────────────────────
+try:
+    from user_management.routes.auth_routes import auth_bp as um_auth_bp
+    from user_management.routes.user_routes import user_bp as um_user_bp
+    from user_management.routes.role_routes import role_bp as um_role_bp
+    from user_management.routes.menu_routes import menu_bp as um_menu_bp
+
+    app.register_blueprint(um_auth_bp)
+    app.register_blueprint(um_user_bp)
+    app.register_blueprint(um_role_bp)
+    app.register_blueprint(um_menu_bp)
+
+    # RBAC 登录页面
+    @app.route('/um/login')
+    def um_login_page():
+        from flask import render_template
+        return render_template('user_management/login.html')
+
+    # RBAC 系统管理页面
+    @app.route('/um/admin')
+    @app.route('/um/')
+    @app.route('/um')
+    def um_admin_page():
+        from flask import render_template
+        return render_template('user_management/admin.html')
+
+    # 初始化 RBAC 种子数据（仅首次）
+    def _init_rbac_seed():
+        import os
+        seed_flag = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            'pro_data', '.rbac_seeded'
+        )
+        if not os.path.exists(seed_flag):
+            try:
+                from user_management.seed import init_seed_data
+                init_seed_data()
+                with open(seed_flag, 'w') as f:
+                    f.write('1')
+            except Exception as e:
+                print(f"  [WARN] RBAC 种子数据初始化失败: {e}")
+
+    _init_rbac_seed()
+    print("  [OK] RBAC 用户管理模块已加载")
+except ImportError as e:
+    print(f"  [WARN] RBAC 用户管理模块加载失败: {e}")
 
 # ── 工具函数 ───────────────────────────────────────────────
 def _ts():
@@ -1265,6 +1275,18 @@ def test_ssh_connection(host, port=22, username='root', password=None, key_file=
 # ── 路由 ────────────────────────────────────────────────────
 @app.route('/')
 def index():
+    """首页 - 需要登录"""
+    # 检查登录状态（Flask session 或 RBAC token）
+    from flask import session
+    if not session.get('user_id'):
+        # 未登录，重定向到 RBAC 登录页
+        from flask import redirect, url_for
+        return redirect('/um/login')
+    
+    # 获取用户角色信息（直接从 session 读，登录时已写入）
+    is_admin = session.get('is_admin', False)
+    user_role = 'admin' if is_admin else 'user'
+    print(f'[DEBUG] index(): user_id={session.get("user_id")}, is_admin={is_admin}, user_role={user_role}', flush=True)
     # 注入当前语言到前端（页面加载时就知道语言，无需额外请求）
     try:
         from i18n import get_lang, get_all_translations, get_language_display
@@ -1283,7 +1305,8 @@ def index():
         pass
     return render_template('index.html', version=__version__, lang=lang, i18n_data=i18n_data,
                            pro_available=pro_available,
-                           admin_token=get_admin_token())
+                           admin_token=get_admin_token(),
+                           user_role=user_role)
 
 
 @app.route('/api/i18n')
@@ -2040,7 +2063,7 @@ def api_download_all_drivers():
             # 完成
             _all_drivers_download_progress['status'] = 'done'
             _all_drivers_download_progress['progress'] = 100
-            _all_drivers_download_progress['message'] = '✅ 所有驱动下载并安装成功！'
+            _all_drivers_download_progress['message'] = '[OK] 所有驱动下载并安装成功！'
 
         except Exception as e:
             _all_drivers_download_progress['status'] = 'error'
@@ -2874,11 +2897,11 @@ def _run_server_inspect_task(task_id, ssh_info):
             return
 
         hostname = result.get('hostname', 'unknown')
-        _emit('log', {'msg': f"[{_ts()}] ✅ 连接成功，主机名: {hostname}"})
+        _emit('log', {'msg': f"[{_ts()}] [OK] 连接成功，主机名: {hostname}"})
         _emit('log', {'msg': f"[{_ts()}] 📊 健康评分: {result.get('health_score', 0)} 分 ({result.get('health_status', '')})"})
 
         for issue in result.get('issues', []):
-            _emit('log', {'msg': f"[{_ts()}] ⚠️ {issue}"})
+            _emit('log', {'msg': f"[{_ts()}] [WARN] {issue}"})
 
         # 网络检测日志
         net = result.get('network', {})
@@ -2900,9 +2923,9 @@ def _run_server_inspect_task(task_id, ssh_info):
         ok, report_path = generate_server_report(result)
 
         if ok:
-            _emit('log', {'msg': f"[{_ts()}] ✅ 报告已生成: {os.path.basename(report_path)}"})
+            _emit('log', {'msg': f"[{_ts()}] [OK] 报告已生成: {os.path.basename(report_path)}"})
         else:
-            _emit('log', {'msg': f"[{_ts()}] ⚠️ 报告生成失败: {report_path}"})
+            _emit('log', {'msg': f"[{_ts()}] [WARN] 报告生成失败: {report_path}"})
             report_path = None
 
         # 保存巡检历史
@@ -2918,7 +2941,7 @@ def _run_server_inspect_task(task_id, ssh_info):
             )
             _emit('log', {'msg': f"[{_ts()}] 💾 巡检历史已保存"})
         except Exception as e:
-            _emit('log', {'msg': f"[{_ts()}] ⚠️ 历史保存失败: {e}"})
+            _emit('log', {'msg': f"[{_ts()}] [WARN] 历史保存失败: {e}"})
 
         if task:
             task['status'] = 'done'
@@ -6030,7 +6053,6 @@ def _call_llm_ollama(cfg: dict, prompt: str, system: str, timeout: int, stream_c
             resp = conn.getresponse()
 
             full_response = ''
-            full_thinking = ''  # 累积 thinking 内容（qwen3）
             # 使用缓冲读取替代逐字节读取（更可靠）
             buf = b''
             while True:
@@ -6046,14 +6068,11 @@ def _call_llm_ollama(cfg: dict, prompt: str, system: str, timeout: int, stream_c
                         continue
                     try:
                         jdata = json.loads(line)
-                        # thinking 帧实时发送（在 response 之前）
-                        if 'thinking' in jdata and jdata['thinking']:
-                            stream_callback(jdata['thinking'], chunk_type='thinking')
                         if 'response' in jdata:
                             ct = jdata['response']
                             if ct:
                                 full_response += ct
-                                stream_callback(ct, chunk_type='response')
+                                stream_callback(ct)
                         if jdata.get('done', False):
                             conn.close()
                             return full_response.strip()
@@ -6159,122 +6178,36 @@ def _call_llm_openai(cfg: dict, prompt: str, system: str, timeout: int, stream_c
 # ══════════════════════════════════════════════════════════════
 
 def _get_chat_session(session_id: str) -> list:
-    """获取或创建聊天会话历史（优先内存，缺失时从 DB 加载）"""
+    """获取或创建聊天会话历史"""
     if session_id not in _chat_sessions:
-        # 懒加载：从 DB 恢复
-        _chat_sessions[session_id] = _load_session_from_db(session_id)
+        _chat_sessions[session_id] = []
     return _chat_sessions[session_id]
 
 
 def _add_to_history(session_id: str, role: str, content: str):
-    """添加消息到会话历史，同时持久化到 DB"""
+    """添加消息到会话历史，超出限制时截断"""
     history = _get_chat_session(session_id)
     history.append({'role': role, 'content': content})
-    # 保留最近 N 条（内存）
+    # 保留最近 N 条
     if len(history) > _CHAT_HISTORY_LIMIT:
         _chat_sessions[session_id] = history[-_CHAT_HISTORY_LIMIT:]
-    
-    # 持久化到 DB
-    try:
-        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
-        import sqlite3
-        conn = sqlite3.connect(db_path)
-        conn.execute(
-            "INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
-            (session_id, role, content)
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass  # DB 不可用时降级为内存模式
 
 
 def _clear_chat_session(session_id: str):
-    """清空指定会话历史（内存 + DB）"""
+    """清空指定会话历史"""
     _chat_sessions.pop(session_id, None)
-    try:
-        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
-        if os.path.exists(db_path):
-            import sqlite3
-            conn = sqlite3.connect(db_path)
-            conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
-            conn.commit()
-            conn.close()
-    except Exception:
-        pass
 
 
 def _format_conversation_history(session_id: str) -> str:
-    """将会话历史格式化为 LLM 可读的对话文本（超长时先 LLM 摘要）"""
+    """将会话历史格式化为 LLM 可读的对话文本"""
     history = _get_chat_session(session_id)
     if not history:
         return ''
-    
-    # 如果历史超长，先对旧消息做 LLM 摘要
-    if len(history) >= _CHAT_SUMMARY_THRESHOLD:
-        history = _summarize_history_if_needed(session_id, history)
-    
     lines = []
     for msg in history[-10:]:  # 最近 10 条
         role_label = '用户' if msg['role'] == 'user' else 'AI'
         lines.append(f"{role_label}: {msg['content']}")
     return '\n'.join(lines)
-
-
-def _summarize_history_if_needed(session_id: str, history: list) -> list:
-    """
-    当历史超长时，用 LLM 摘要旧消息，保留摘要 + 最近 N 条原文
-    返回新的 history list（摘要作为一条 AI 消息插入）
-    """
-    if len(history) < _CHAT_SUMMARY_THRESHOLD:
-        return history
-    
-    # 保留最近 6 条原文，摘要前面的
-    keep_recent = 6
-    to_summarize = history[:-keep_recent]
-    recent = history[-keep_recent:]
-    
-    # 构建待摘要文本
-    summary_text = ''
-    for msg in to_summarize:
-        role_label = '用户' if msg['role'] == 'user' else 'AI'
-        summary_text += f"{role_label}: {msg['content']}\n"
-    
-    try:
-        cfg = _load_ai_config()
-        backend = cfg.get('backend', 'ollama')
-        if backend in ('ollama', 'openai'):
-            summary_prompt = f"请用 100 字以内摘要以下对话的要点（保留关键技术信息）：\n\n{summary_text}"
-            summary = _call_llm(summary_prompt, system='你是一个对话摘要助手，输出简洁的中文摘要。')
-            if summary and not summary.startswith('['):
-                # 用摘要替换旧历史，合并到内存和 DB
-                new_history = [{'role': 'ai', 'content': f'[历史摘要] {summary}'}] + recent
-                _chat_sessions[session_id] = new_history
-                # 同步 DB：删除旧记录，插入摘要
-                try:
-                    db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
-                    import sqlite3
-                    conn = sqlite3.connect(db_path)
-                    conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
-                    conn.execute(
-                        "INSERT INTO chat_history (session_id, role, content) VALUES (?, 'ai', ?)",
-                        (session_id, f'[历史摘要] {summary}')
-                    )
-                    for msg in recent:
-                        conn.execute(
-                            "INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
-                            (session_id, msg['role'], msg['content'])
-                        )
-                    conn.commit()
-                    conn.close()
-                except Exception:
-                    pass
-                return new_history
-    except Exception:
-        pass
-    
-    # 摘要失败：返回最近 _CHAT_HISTORY_LIMIT 条
-    return history[-_CHAT_HISTORY_LIMIT:] if len(history) > _CHAT_HISTORY_LIMIT else history
 
 
 def _classify_chat_intent(user_message: str) -> str:
@@ -6794,14 +6727,121 @@ def execute_simple_query(db_info: dict, db_type: str, scope: str) -> str:
     return '\n'.join(results)
 
 
+def _stream_inspection_response(data, message, session_id, chat_context):
+    """巡检意图：解析→匹配数据源→执行巡检，通过SSE返回结果"""
+    import time
+
+    # 1. 解析意图
+    intent = parse_intent(message)
+    db_type = intent.get('db_type', 'unknown')
+    db_name = intent.get('db_name', '')
+    scope = intent.get('scope', 'all')
+    need_report = intent.get('need_report', scope == 'all')
+
+    print(f'[AI Stream] 巡检意图: db_type={db_type}, db_name={db_name}, scope={scope}', flush=True)
+
+    # 2. 匹配数据源
+    ds = None
+    matched_name = None
+
+    if db_name:
+        ds = match_datasource(db_name)
+        matched_name = db_name
+
+    # 名称匹配失败，尝试按 db_type 筛选
+    if not ds and db_type != 'unknown' and db_type:
+        candidates = list_instances_by_type(db_type)
+        if len(candidates) == 1:
+            ds = match_datasource(candidates[0])
+            matched_name = candidates[0]
+        elif len(candidates) > 1:
+            names_str = '、'.join(candidates)
+            yield f"data: {json.dumps({'type': 'inspect_ask', 'message': f'找到 {len(candidates)} 个{db_type.upper()}数据源：{names_str}，请选择要巡检的实例。', 'candidates': candidates, 'db_type': db_type}, ensure_ascii=False)}\n\n"
+            return
+
+    if not ds:
+        # 尝试从请求体获取连接参数
+        ds = {
+            'host': data.get('host', ''),
+            'port': data.get('port', 3306),
+            'user': data.get('user', ''),
+            'password': data.get('password', ''),
+            'database': data.get('database', ''),
+            'service_name': data.get('service_name', ''),
+            'sid': data.get('sid', ''),
+        }
+
+    if not ds or not ds.get('host'):
+        if db_name and db_type != 'unknown' and db_type:
+            candidates = list_instances_by_type(db_type)
+            if candidates:
+                names_str = '、'.join(candidates)
+                yield f"data: {json.dumps({'type': 'inspect_ask', 'message': f'未找到「{db_name}」，可用的{db_type.upper()}数据源有：{names_str}。', 'candidates': candidates, 'db_type': db_type}, ensure_ascii=False)}\n\n"
+                return
+        yield f"data: {json.dumps({'type': 'error', 'message': '[WARN] 无法确定巡检目标。请指定数据源名称（如"巡检 MySQL-01 的连接数"）或在上下文中选择数据源。'}, ensure_ascii=False)}\n\n"
+        return
+
+    # 3. 执行简单查询或启动巡检任务
+    if scope in ('connection_count', 'lock_wait', 'slow_queries') and not need_report:
+        try:
+            result = execute_simple_query(ds, db_type, scope)
+            yield f"data: {json.dumps({'type': 'inspect_result', 'message': result, 'scope': scope, 'db_name': matched_name or ds.get('name', '')}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'[WARN] 执行查询失败: {e}'}, ensure_ascii=False)}\n\n"
+        return
+
+    # 全库巡检：启动任务
+    task_id = str(uuid.uuid4())
+    db_info = {
+        'ip': ds.get('host', ''),
+        'port': int(ds.get('port', 3306)),
+        'user': ds.get('user', ''),
+        'password': ds.get('password', ''),
+        'database': ds.get('database') or ('postgres' if db_type == 'pg' else ('DAMENG' if db_type == 'dm' else '')),
+        'service_name': ds.get('service_name') or ds.get('sid'),
+        'name': ds.get('name', db_name or ds.get('host', '')),
+    }
+
+    inspector_name = data.get('inspector_name', 'Jack')
+    tasks[task_id] = {
+        'id': task_id,
+        'db_type': db_type,
+        'db_info': db_info,
+        'inspector': inspector_name,
+        'status': 'running',
+        'started_at': datetime.datetime.now().isoformat(),
+    }
+
+    task_func_map = {
+        'mysql': run_inspection_task,
+        'pg': run_inspection_task,
+        'oracle': run_inspection_task,
+        'dm': run_inspection_task,
+        'sqlserver': run_inspection_task,
+        'tidb': run_inspection_task,
+        'ivorysql': run_inspection_task,
+        'kingbase': run_inspection_task,
+        'yashandb': run_inspection_task,
+        'gbase': run_inspection_task,
+    }
+    task_func = task_func_map.get(db_type, run_inspection_task)
+
+    t = threading.Thread(target=task_func, args=(task_id, db_info, inspector_name))
+    t.daemon = True
+    t.start()
+
+    # 通过 SSE 告诉前端巡检已启动
+    yield f"data: {json.dumps({'type': 'inspect_start', 'task_id': task_id, 'message': f'🔍 已启动 **{matched_name or db_name or db_type}** 的巡检任务...', 'db_name': matched_name or ds.get('name', ''), 'host': ds.get('host', ''), 'port': ds.get('port', ''), 'db_type': db_type}, ensure_ascii=False)}\n\n"
+
+
 @app.route('/api/chat/stream', methods=['POST'])
 def api_chat_stream():
-    """SSE 流式返回 AI 回复（v2.6.3）"""
+    """SSE 流式返回 AI 回复（v2.6.3+）自动意图分类"""
     try:
         data = request.get_json() or {}
         message = data.get('message', '')
         session_id = data.get('session_id', 'default')
-        
+
         # 提取上下文
         chat_context = {
             'page': data.get('page', 'unknown'),
@@ -6812,27 +6852,37 @@ def api_chat_stream():
             'sql_content': data.get('sql_content', ''),
             'template_id': data.get('template_id', None),
         }
-        
+
         if not message:
             return jsonify({'error': '消息不能为空'}), 400
-        
-        # 构建 prompt（复用 _answer_chat_qa 的逻辑）
+
+        # ═══ 意图分类（自动判断问答 vs 巡检）═══
+        chat_intent = _classify_chat_intent(message)
+        print(f'[AI Stream] 意图分类: "{message[:40]}" → {chat_intent}', flush=True)
+
+        # ═══ 巡检模式：直接执行巡检 ═══
+        if chat_intent == 'inspect':
+            return Response(
+                _stream_inspection_response(data, message, session_id, chat_context),
+                mimetype='text/event-stream'
+            )
+
+        # ═══ 问答模式：流式 LLM 回复（原有逻辑）═══
         cfg = _load_ai_config()
         backend = cfg.get('backend', 'ollama')
         rag_cfg = cfg.get('rag', {})
         rag_enabled = rag_cfg.get('enabled', True) if isinstance(rag_cfg, dict) else True
-        
+
         # 检查 AI 后端是否可用
         ai_available = backend in ('ollama', 'openai')
         if backend == 'openai' and not cfg.get('online_enabled', False):
             ai_available = False
-        
+
         if not ai_available:
             def gen_error():
-                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 后端未启用'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 后端未启用'}, ensure_ascii=False)}\n\n"
             return Response(gen_error(), mimetype='text/event-stream')
-        
-        # 构建 system_prompt（含上下文）
+
         system_prompt = """你是 DBCheck 数据库运维智能助手，专门帮助用户解答数据库运维、性能优化、故障排查等方面的问题。
 
 回答规则：
@@ -6907,31 +6957,30 @@ def api_chat_stream():
 
         def generate():
             q = Queue()
-            full_response_chunks = []  # 只存 response 类型的 chunk
+            full_chunks = []
             import sys
 
             print(f'[AI Stream] 后端启动, backend={backend}, model={cfg.get("model", cfg.get("online_model", "unknown"))}', flush=True)
             print(f'[AI Stream] prompt长度={len(prompt)}, system_prompt长度={len(system_prompt)}', flush=True)
 
-            def stream_callback(chunk, chunk_type='response'):
+            def stream_callback(chunk):
                 """LLM 流式回调：将 chunk 放入队列"""
-                if chunk_type == 'response':
-                    full_response_chunks.append(chunk)
-                q.put({'chunk_type': chunk_type, 'content': chunk})
-                print(f'[AI Stream] {chunk_type} chunk: {repr(chunk)[:50]}', flush=True)
+                full_chunks.append(chunk)
+                q.put(('chunk', chunk))
+                print(f'[AI Stream] chunk: {chunk!r}', flush=True)
 
             def run_llm():
                 """在子线程中调用 LLM"""
                 try:
                     print(f'[AI Stream] 开始调用 _call_llm...', flush=True)
                     result = _call_llm(prompt, system_prompt, stream_callback=stream_callback)
-                    print(f'[AI Stream] _call_llm 返回: result={result!r}, len(full_response_chunks)={len(full_response_chunks)}', flush=True)
-                    q.put({'type': 'done', 'result': result})
+                    print(f'[AI Stream] _call_llm 返回: result={result!r}, len(full_chunks)={len(full_chunks)}', flush=True)
+                    q.put(('done', result))
                 except Exception as e:
                     print(f'[AI Stream] _call_llm 异常: {e}', file=sys.stderr, flush=True)
                     import traceback
                     traceback.print_exc()
-                    q.put({'type': 'error', 'error': str(e)})
+                    q.put(('error', str(e)))
 
             # 启动 LLM 调用线程
             t = threading.Thread(target=run_llm, daemon=True)
@@ -6942,72 +6991,49 @@ def api_chat_stream():
 
             # 从队列读取 chunk 并流式发送
             while True:
-                msg = q.get()
-                msg_type = msg if isinstance(msg, tuple) else msg.get('type', 'chunk')
-                
-                if isinstance(msg, tuple):
-                    # 兼容旧格式
-                    msg_type, data = msg
-                    if msg_type == 'chunk':
-                        chunk_type = 'response'
-                        chunk_content = data
-                    elif msg_type == 'done':
-                        full_text = data or ''
-                        break
-                    elif msg_type == 'error':
-                        error_msg = data
-                        error_data = json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)
-                        yield f"data: {error_data}\n\n"
-                        break
-                else:
-                    # 新格式：字典
-                    if msg_type == 'chunk':
-                        chunk_type = msg['chunk_type']
-                        chunk_content = msg['content']
-                        if chunk_type == 'thinking':
-                            # thinking 帧持续发送（每段思考内容都推送）
-                            thinking_data = json.dumps({'type': 'thinking', 'content': chunk_content}, ensure_ascii=False)
-                            yield f"data: {thinking_data}\n\n"
-                        elif chunk_type == 'response':
-                            chunk_data = json.dumps({'type': 'chunk', 'content': chunk_content}, ensure_ascii=False)
-                            yield f"data: {chunk_data}\n\n"
-                    elif msg_type == 'done':
-                        full_text = msg.get('result', '')
-                        # 保存会话历史
-                        final_text = ''.join(full_response_chunks) if full_response_chunks else (full_text or '')
-                        
-                        # Fallback：如果流式返回空内容，尝试非流式调用
-                        if not final_text.strip() or final_text.startswith('['):
-                            print(f'[AI Stream] 流式返回空内容, 执行 fallback 非流式调用...', flush=True)
-                            try:
-                                fallback_result = _call_llm(prompt, system_prompt, stream_callback=None)
-                                print(f'[AI Stream] fallback 返回: {fallback_result!r}', flush=True)
-                                if fallback_result and not fallback_result.startswith('['):
-                                    fb_chunk = json.dumps({'type': 'chunk', 'content': fallback_result}, ensure_ascii=False)
-                                    yield f"data: {fb_chunk}\n\n"
-                                    final_text = fallback_result
-                            except Exception as fb_err:
-                                print(f'[AI Stream] fallback 失败: {fb_err}', file=sys.stderr, flush=True)
-                                if not final_text:
-                                    final_text = f'[AI 生成失败，请检查 Ollama 服务是否正常运行]'
-                        
-                        print(f'[AI Stream] 完成, full_text长度={len(final_text)}, 内容预览: {final_text[:200]!r}', flush=True)
-                        _add_to_history(session_id, 'user', message)
-                        _add_to_history(session_id, 'ai', final_text)
-                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                        break
-                    elif msg_type == 'error':
-                        error_msg = msg.get('error', '未知错误')
-                        error_data = json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)
-                        yield f"data: {error_data}\n\n"
-                        break
+                msg_type, data = q.get()
+                if msg_type == 'chunk':
+                    chunk_data = json.dumps({'type': 'chunk', 'content': data}, ensure_ascii=False)
+                    yield f"data: {chunk_data}\n\n"
+                elif msg_type == 'done':
+                    # 保存会话历史
+                    full_text = ''.join(full_chunks) if full_chunks else (data or '')
+
+                    # Fallback：如果流式返回空内容，尝试非流式调用
+                    if not full_text.strip() and not str(data or '').startswith('['):
+                        print(f'[AI Stream] 流式返回空内容, 执行 fallback 非流式调用...', flush=True)
+                        try:
+                            fallback_result = _call_llm(prompt, system_prompt, stream_callback=None)
+                            print(f'[AI Stream] fallback 返回: {fallback_result!r}', flush=True)
+                            if fallback_result and not fallback_result.startswith('['):
+                                # 将完整结果作为单个 chunk 发送
+                                fb_chunk = json.dumps({'type': 'chunk', 'content': fallback_result}, ensure_ascii=False)
+                                yield f"data: {fb_chunk}\n\n"
+                                full_text = fallback_result
+                        except Exception as fb_err:
+                            print(f'[AI Stream] fallback 失败: {fb_err}', file=sys.stderr, flush=True)
+                            if not full_text:
+                                full_text = f'[AI 生成失败，请检查 Ollama 服务是否正常运行]'
+
+                    print(f'[AI Stream] 完成, full_text长度={len(full_text)}, 内容预览: {full_text[:200]!r}', flush=True)
+                    _add_to_history(session_id, 'user', message)
+                    _add_to_history(session_id, 'ai', full_text)
+                    # 发送完成标记
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                    break
+                elif msg_type == 'error':
+                    error_data = json.dumps({'type': 'error', 'message': data}, ensure_ascii=False)
+                    yield f"data: {error_data}\n\n"
+                    break
 
             t.join(timeout=5)
         
         return Response(generate(), mimetype='text/event-stream')
     
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f'[AI Stream] 顶层异常: {e}', file=sys.stderr, flush=True)
+        error_json = json.dumps({'type': 'error', 'message': str(e)})
+        return Response(f"data: {error_json}\n\n", mimetype='text/event-stream')
 
 
 @app.route('/api/chat', methods=['POST'])
@@ -7037,7 +7063,7 @@ def api_chat():
             return jsonify({
                 'ok': True,
                 'type': 'text',
-                'message': '✅ 对话已清空，开始新的对话。',
+                'message': '[OK] 对话已清空，开始新的对话。',
                 'cleared': True,
             })
 
