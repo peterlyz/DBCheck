@@ -225,11 +225,48 @@ _rag_manager = None
 # AI 聊天会话历史（key: session_id, value: list of {role, content}）
 _chat_sessions = {}
 _CHAT_HISTORY_LIMIT = 20  # 每个会话最多保留 20 条消息
+_CHAT_SUMMARY_THRESHOLD = 20  # 历史超过此条数时触发 LLM 摘要
+
+def _init_chat_db():
+    """初始化 chat_history 表（如果不存在）"""
+    db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.execute("""CREATE TABLE IF NOT EXISTS chat_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp REAL DEFAULT (strftime('%s', 'now'))
+    )""")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id, timestamp)")
+    conn.commit()
+    conn.close()
+
+def _load_session_from_db(session_id: str) -> list:
+    """从 DB 加载会话历史"""
+    db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
+    if not os.path.exists(db_path):
+        return []
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    cur = conn.execute(
+        "SELECT role, content FROM chat_history WHERE session_id = ? ORDER BY timestamp, id",
+        (session_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [{'role': r[0], 'content': r[1]} for r in rows]
+
 
 # ── 用户认证 ───────────────────────────────────────────────
 from auth import init_default_user, register_auth_routes
 init_default_user()
 register_auth_routes(app)
+
+# 初始化 AI 聊天历史 DB 表
+_init_chat_db()
 
 # ── 工具函数 ───────────────────────────────────────────────
 def _ts():
@@ -5993,6 +6030,7 @@ def _call_llm_ollama(cfg: dict, prompt: str, system: str, timeout: int, stream_c
             resp = conn.getresponse()
 
             full_response = ''
+            full_thinking = ''  # 累积 thinking 内容（qwen3）
             # 使用缓冲读取替代逐字节读取（更可靠）
             buf = b''
             while True:
@@ -6008,11 +6046,14 @@ def _call_llm_ollama(cfg: dict, prompt: str, system: str, timeout: int, stream_c
                         continue
                     try:
                         jdata = json.loads(line)
+                        # thinking 帧实时发送（在 response 之前）
+                        if 'thinking' in jdata and jdata['thinking']:
+                            stream_callback(jdata['thinking'], chunk_type='thinking')
                         if 'response' in jdata:
                             ct = jdata['response']
                             if ct:
                                 full_response += ct
-                                stream_callback(ct)
+                                stream_callback(ct, chunk_type='response')
                         if jdata.get('done', False):
                             conn.close()
                             return full_response.strip()
@@ -6118,36 +6159,122 @@ def _call_llm_openai(cfg: dict, prompt: str, system: str, timeout: int, stream_c
 # ══════════════════════════════════════════════════════════════
 
 def _get_chat_session(session_id: str) -> list:
-    """获取或创建聊天会话历史"""
+    """获取或创建聊天会话历史（优先内存，缺失时从 DB 加载）"""
     if session_id not in _chat_sessions:
-        _chat_sessions[session_id] = []
+        # 懒加载：从 DB 恢复
+        _chat_sessions[session_id] = _load_session_from_db(session_id)
     return _chat_sessions[session_id]
 
 
 def _add_to_history(session_id: str, role: str, content: str):
-    """添加消息到会话历史，超出限制时截断"""
+    """添加消息到会话历史，同时持久化到 DB"""
     history = _get_chat_session(session_id)
     history.append({'role': role, 'content': content})
-    # 保留最近 N 条
+    # 保留最近 N 条（内存）
     if len(history) > _CHAT_HISTORY_LIMIT:
         _chat_sessions[session_id] = history[-_CHAT_HISTORY_LIMIT:]
+    
+    # 持久化到 DB
+    try:
+        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
+            (session_id, role, content)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # DB 不可用时降级为内存模式
 
 
 def _clear_chat_session(session_id: str):
-    """清空指定会话历史"""
+    """清空指定会话历史（内存 + DB）"""
     _chat_sessions.pop(session_id, None)
+    try:
+        db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
+        if os.path.exists(db_path):
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+            conn.commit()
+            conn.close()
+    except Exception:
+        pass
 
 
 def _format_conversation_history(session_id: str) -> str:
-    """将会话历史格式化为 LLM 可读的对话文本"""
+    """将会话历史格式化为 LLM 可读的对话文本（超长时先 LLM 摘要）"""
     history = _get_chat_session(session_id)
     if not history:
         return ''
+    
+    # 如果历史超长，先对旧消息做 LLM 摘要
+    if len(history) >= _CHAT_SUMMARY_THRESHOLD:
+        history = _summarize_history_if_needed(session_id, history)
+    
     lines = []
     for msg in history[-10:]:  # 最近 10 条
         role_label = '用户' if msg['role'] == 'user' else 'AI'
         lines.append(f"{role_label}: {msg['content']}")
     return '\n'.join(lines)
+
+
+def _summarize_history_if_needed(session_id: str, history: list) -> list:
+    """
+    当历史超长时，用 LLM 摘要旧消息，保留摘要 + 最近 N 条原文
+    返回新的 history list（摘要作为一条 AI 消息插入）
+    """
+    if len(history) < _CHAT_SUMMARY_THRESHOLD:
+        return history
+    
+    # 保留最近 6 条原文，摘要前面的
+    keep_recent = 6
+    to_summarize = history[:-keep_recent]
+    recent = history[-keep_recent:]
+    
+    # 构建待摘要文本
+    summary_text = ''
+    for msg in to_summarize:
+        role_label = '用户' if msg['role'] == 'user' else 'AI'
+        summary_text += f"{role_label}: {msg['content']}\n"
+    
+    try:
+        cfg = _load_ai_config()
+        backend = cfg.get('backend', 'ollama')
+        if backend in ('ollama', 'openai'):
+            summary_prompt = f"请用 100 字以内摘要以下对话的要点（保留关键技术信息）：\n\n{summary_text}"
+            summary = _call_llm(summary_prompt, system='你是一个对话摘要助手，输出简洁的中文摘要。')
+            if summary and not summary.startswith('['):
+                # 用摘要替换旧历史，合并到内存和 DB
+                new_history = [{'role': 'ai', 'content': f'[历史摘要] {summary}'}] + recent
+                _chat_sessions[session_id] = new_history
+                # 同步 DB：删除旧记录，插入摘要
+                try:
+                    db_path = os.path.join(BASE_DIR, 'pro_data', 'pro.db')
+                    import sqlite3
+                    conn = sqlite3.connect(db_path)
+                    conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+                    conn.execute(
+                        "INSERT INTO chat_history (session_id, role, content) VALUES (?, 'ai', ?)",
+                        (session_id, f'[历史摘要] {summary}')
+                    )
+                    for msg in recent:
+                        conn.execute(
+                            "INSERT INTO chat_history (session_id, role, content) VALUES (?, ?, ?)",
+                            (session_id, msg['role'], msg['content'])
+                        )
+                    conn.commit()
+                    conn.close()
+                except Exception:
+                    pass
+                return new_history
+    except Exception:
+        pass
+    
+    # 摘要失败：返回最近 _CHAT_HISTORY_LIMIT 条
+    return history[-_CHAT_HISTORY_LIMIT:] if len(history) > _CHAT_HISTORY_LIMIT else history
 
 
 def _classify_chat_intent(user_message: str) -> str:
@@ -6780,30 +6907,31 @@ def api_chat_stream():
 
         def generate():
             q = Queue()
-            full_chunks = []
+            full_response_chunks = []  # 只存 response 类型的 chunk
             import sys
 
             print(f'[AI Stream] 后端启动, backend={backend}, model={cfg.get("model", cfg.get("online_model", "unknown"))}', flush=True)
             print(f'[AI Stream] prompt长度={len(prompt)}, system_prompt长度={len(system_prompt)}', flush=True)
 
-            def stream_callback(chunk):
+            def stream_callback(chunk, chunk_type='response'):
                 """LLM 流式回调：将 chunk 放入队列"""
-                full_chunks.append(chunk)
-                q.put(('chunk', chunk))
-                print(f'[AI Stream] chunk: {chunk!r}', flush=True)
+                if chunk_type == 'response':
+                    full_response_chunks.append(chunk)
+                q.put({'chunk_type': chunk_type, 'content': chunk})
+                print(f'[AI Stream] {chunk_type} chunk: {repr(chunk)[:50]}', flush=True)
 
             def run_llm():
                 """在子线程中调用 LLM"""
                 try:
                     print(f'[AI Stream] 开始调用 _call_llm...', flush=True)
                     result = _call_llm(prompt, system_prompt, stream_callback=stream_callback)
-                    print(f'[AI Stream] _call_llm 返回: result={result!r}, len(full_chunks)={len(full_chunks)}', flush=True)
-                    q.put(('done', result))
+                    print(f'[AI Stream] _call_llm 返回: result={result!r}, len(full_response_chunks)={len(full_response_chunks)}', flush=True)
+                    q.put({'type': 'done', 'result': result})
                 except Exception as e:
                     print(f'[AI Stream] _call_llm 异常: {e}', file=sys.stderr, flush=True)
                     import traceback
                     traceback.print_exc()
-                    q.put(('error', str(e)))
+                    q.put({'type': 'error', 'error': str(e)})
 
             # 启动 LLM 调用线程
             t = threading.Thread(target=run_llm, daemon=True)
@@ -6814,40 +6942,65 @@ def api_chat_stream():
 
             # 从队列读取 chunk 并流式发送
             while True:
-                msg_type, data = q.get()
-                if msg_type == 'chunk':
-                    chunk_data = json.dumps({'type': 'chunk', 'content': data}, ensure_ascii=False)
-                    yield f"data: {chunk_data}\n\n"
-                elif msg_type == 'done':
-                    # 保存会话历史
-                    full_text = ''.join(full_chunks) if full_chunks else (data or '')
-
-                    # Fallback：如果流式返回空内容，尝试非流式调用
-                    if not full_text.strip() and not str(data or '').startswith('['):
-                        print(f'[AI Stream] 流式返回空内容, 执行 fallback 非流式调用...', flush=True)
-                        try:
-                            fallback_result = _call_llm(prompt, system_prompt, stream_callback=None)
-                            print(f'[AI Stream] fallback 返回: {fallback_result!r}', flush=True)
-                            if fallback_result and not fallback_result.startswith('['):
-                                # 将完整结果作为单个 chunk 发送
-                                fb_chunk = json.dumps({'type': 'chunk', 'content': fallback_result}, ensure_ascii=False)
-                                yield f"data: {fb_chunk}\n\n"
-                                full_text = fallback_result
-                        except Exception as fb_err:
-                            print(f'[AI Stream] fallback 失败: {fb_err}', file=sys.stderr, flush=True)
-                            if not full_text:
-                                full_text = f'[AI 生成失败，请检查 Ollama 服务是否正常运行]'
-
-                    print(f'[AI Stream] 完成, full_text长度={len(full_text)}, 内容预览: {full_text[:200]!r}', flush=True)
-                    _add_to_history(session_id, 'user', message)
-                    _add_to_history(session_id, 'ai', full_text)
-                    # 发送完成标记
-                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                    break
-                elif msg_type == 'error':
-                    error_data = json.dumps({'type': 'error', 'message': data}, ensure_ascii=False)
-                    yield f"data: {error_data}\n\n"
-                    break
+                msg = q.get()
+                msg_type = msg if isinstance(msg, tuple) else msg.get('type', 'chunk')
+                
+                if isinstance(msg, tuple):
+                    # 兼容旧格式
+                    msg_type, data = msg
+                    if msg_type == 'chunk':
+                        chunk_type = 'response'
+                        chunk_content = data
+                    elif msg_type == 'done':
+                        full_text = data or ''
+                        break
+                    elif msg_type == 'error':
+                        error_msg = data
+                        error_data = json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)
+                        yield f"data: {error_data}\n\n"
+                        break
+                else:
+                    # 新格式：字典
+                    if msg_type == 'chunk':
+                        chunk_type = msg['chunk_type']
+                        chunk_content = msg['content']
+                        if chunk_type == 'thinking':
+                            # thinking 帧持续发送（每段思考内容都推送）
+                            thinking_data = json.dumps({'type': 'thinking', 'content': chunk_content}, ensure_ascii=False)
+                            yield f"data: {thinking_data}\n\n"
+                        elif chunk_type == 'response':
+                            chunk_data = json.dumps({'type': 'chunk', 'content': chunk_content}, ensure_ascii=False)
+                            yield f"data: {chunk_data}\n\n"
+                    elif msg_type == 'done':
+                        full_text = msg.get('result', '')
+                        # 保存会话历史
+                        final_text = ''.join(full_response_chunks) if full_response_chunks else (full_text or '')
+                        
+                        # Fallback：如果流式返回空内容，尝试非流式调用
+                        if not final_text.strip() or final_text.startswith('['):
+                            print(f'[AI Stream] 流式返回空内容, 执行 fallback 非流式调用...', flush=True)
+                            try:
+                                fallback_result = _call_llm(prompt, system_prompt, stream_callback=None)
+                                print(f'[AI Stream] fallback 返回: {fallback_result!r}', flush=True)
+                                if fallback_result and not fallback_result.startswith('['):
+                                    fb_chunk = json.dumps({'type': 'chunk', 'content': fallback_result}, ensure_ascii=False)
+                                    yield f"data: {fb_chunk}\n\n"
+                                    final_text = fallback_result
+                            except Exception as fb_err:
+                                print(f'[AI Stream] fallback 失败: {fb_err}', file=sys.stderr, flush=True)
+                                if not final_text:
+                                    final_text = f'[AI 生成失败，请检查 Ollama 服务是否正常运行]'
+                        
+                        print(f'[AI Stream] 完成, full_text长度={len(final_text)}, 内容预览: {final_text[:200]!r}', flush=True)
+                        _add_to_history(session_id, 'user', message)
+                        _add_to_history(session_id, 'ai', final_text)
+                        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                        break
+                    elif msg_type == 'error':
+                        error_msg = msg.get('error', '未知错误')
+                        error_data = json.dumps({'type': 'error', 'message': error_msg}, ensure_ascii=False)
+                        yield f"data: {error_data}\n\n"
+                        break
 
             t.join(timeout=5)
         

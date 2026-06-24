@@ -12365,19 +12365,36 @@ function addChatMessage(text, type, isHtml) {
   return div;
 }
 
+let _thinkingShownAt = 0;  // Thinking 显示的时间戳
+
 function showTypingIndicator() {
+  hideTypingIndicator();  // 先清除旧的（取消之前的延迟删除）
+  _thinkingShownAt = Date.now();
+  console.log('[AI Chat] 显示 Thinking...');
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
-  div.className = 'chat-typing';
+  div.className = 'chat-msg ai';
   div.id = 'chat-typing-indicator';
-  div.innerHTML = '<span></span><span></span><span></span>';
+  div.innerHTML = '<span style="color:#f0ad4e;font-weight:600;">💭 Thinking<span class="thinking-dots">...</span></span>';
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
 
 function hideTypingIndicator() {
+  console.log('[AI Chat] 隐藏 Thinking...');
   const indicator = document.getElementById('chat-typing-indicator');
-  if (indicator) indicator.remove();
+  if (!indicator) return;
+  // 至少显示 800ms，避免 Ollama 响应太快一闪而过
+  var elapsed = Date.now() - _thinkingShownAt;
+  var delay = Math.max(0, 800 - elapsed);
+  if (delay > 0) {
+    setTimeout(function() {
+      var el = document.getElementById('chat-typing-indicator');
+      if (el) el.remove();
+    }, delay);
+  } else {
+    indicator.remove();
+  }
 }
 
 function setInputEnabled(enabled) {
@@ -12581,10 +12598,10 @@ async function sendChatMessage() {
 
     hideTypingIndicator();
 
-    // 创建 AI 消息占位符
-    const aiMsgEl = addChatMessage('', 'ai', true);
     let fullContent = '';
-    let receivedFirstChunk = false;
+    let thinkingContent = '';
+    let thinkingEl = null;
+    let aiMsgEl = null;  // 延迟创建，等第一个 chunk 到达
 
     // 读取 SSE 流
     const reader = res.body.getReader();
@@ -12606,22 +12623,57 @@ async function sendChatMessage() {
 
           try {
             const data = JSON.parse(dataStr);
-            if (data.type === 'start') {
-              // 开始接收
+            if (data.type === 'thinking') {
+              // 收到思考过程，创建可折叠的 thinking 块（在 AI 消息前面）
+              thinkingContent += data.content;
+              if (!thinkingEl) {
+                thinkingEl = document.createElement('details');
+                thinkingEl.className = 'thinking-block';
+                thinkingEl.style.cssText = 'margin-bottom:8px; border:1px solid var(--border); border-radius:8px; padding:8px 12px; background:var(--surface2);';
+                const summary = document.createElement('summary');
+                summary.textContent = '🤔 AI 思考过程';
+                summary.style.cssText = 'cursor:pointer; font-size:13px; color:var(--text-muted);';
+                thinkingEl.appendChild(summary);
+                const pre = document.createElement('pre');
+                pre.id = 'thinking-content';
+                pre.style.cssText = 'margin:8px 0 0 0; padding:8px; background:var(--bg); border-radius:6px; font-size:12px; white-space:pre-wrap; max-height:300px; overflow:auto;';
+                thinkingEl.appendChild(pre);
+                // 插入到聊天区域（在 AI 消息前面）
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.appendChild(thinkingEl);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              }
+              // 实时更新 thinking 内容
+              const pre = document.getElementById('thinking-content');
+              if (pre) pre.textContent = thinkingContent;
+
             } else if (data.type === 'chunk') {
-              if (!receivedFirstChunk) {
-                receivedFirstChunk = true;
-                aiMsgEl.innerHTML = '';  // 清空"正在输入"动画
+              // 第一次收到 chunk 时创建 AI 消息气泡
+              if (!aiMsgEl) {
+                aiMsgEl = addChatMessage('', 'ai', true);
+                // 如果已有 thinking 块，把它移到 AI 消息前面
+                if (thinkingEl && thinkingEl.parentNode) {
+                  thinkingEl.parentNode.removeChild(thinkingEl);
+                  aiMsgEl.parentNode.insertBefore(thinkingEl, aiMsgEl);
+                }
               }
               fullContent += data.content;
               // Markdown 渲染
-              aiMsgEl.innerHTML = renderMarkdown(fullContent);
+              let contentDiv = aiMsgEl.querySelector('.ai-content');
+              if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'ai-content';
+                aiMsgEl.appendChild(contentDiv);
+              }
+              contentDiv.innerHTML = renderMarkdown(fullContent);
               // 滚动到底部
               const chatMessages = document.getElementById('chat-messages');
               chatMessages.scrollTop = chatMessages.scrollHeight;
+
             } else if (data.type === 'done') {
               // 完成
             } else if (data.type === 'error') {
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', true);
               aiMsgEl.innerHTML = `❌ ${data.message}`;
             }
           } catch (e) {

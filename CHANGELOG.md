@@ -1,5 +1,34 @@
 # Changelog
 
+## v2.6.3 (2026-06-24)
+
+### Phase 1：流式输出 + Markdown 渲染（基础设施）
+
+#### 🐛 修复问题
+- 修复 Ollama 流式读取问题（`resp.read(1)` 逐字节读取不可靠 → 改为 `resp.read(4096)` 缓冲读取）
+- 修复空 chunk 发送到前端问题（Ollama 中间状态帧 `response: ""` 不再发送）
+- 修复 `index.html` 中 7 处 JS 语法错误（正则 `<` `>` 改用 `new RegExp()` 避免 HTML 解析器误判）
+- 增加流式 fallback 逻辑：流式返回空内容时，自动用非流式模式重试
+- 新增调试日志（`[AI Stream]` 前缀），方便定位前后端问题
+
+#### ✨ 新增功能
+- AI 聊天 Markdown 渲染正常（加粗、代码块、标题、列表、链接）
+- SSE 流式输出正常（`start → chunk → done`）
+
+### Phase 2：多轮对话优化（会话历史持久化 + LLM 摘要）
+
+#### ✨ 新增功能
+- **会话历史持久化**：聊天历史保存到 `pro.db` 的 `chat_history` 表，Flask 重启不丢失
+- **懒加载**：`_get_chat_session()` 优先内存，缺失时从 DB 加载
+- **LLM 摘要**：历史超过 20 条时，自动用 LLM 摘要旧消息，节省 token
+- **DB 同步**：清空会话时同时删除 DB 记录，保持一致性
+
+#### 🔧 优化改进
+- `_add_to_history()` 同时写入内存和 DB，保证一致性
+- `_summarize_history_if_needed()` 保留最近 6 条原文 + 摘要，平衡上下文完整性和 token 消耗
+
+---
+
 ## v2.6.2 (2026-06-23)
 
 ### ✨ 新增功能

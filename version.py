@@ -11,4 +11,4 @@ DBCheck 鐗堟湰淇℃伅 (渚涢潤鎬佺綉绔欒鍙?
 杩欎釜鏂囦欢浼氳杞崲涓?version.json 渚?docs/index.html 浣跨敤
 """
 
-__version__ = "v2.6.2"
+__version__ = "v2.6.3"
