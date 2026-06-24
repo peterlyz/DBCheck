@@ -1,4 +1,4 @@
-# DBCheck v2.7.0 - Full Edition Dockerfile (with RBAC User Management)
+﻿# DBCheck v2.7.0 - Full Edition Dockerfile (with RBAC User Management)
 # Supports: MySQL, TiDB, PostgreSQL, IvorySQL, Oracle, SQL Server, DM8, YashanDB
 #
 # Build:

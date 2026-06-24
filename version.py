@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 #
 # Copyright (c) 2025-2026 fiyo (Jack Ge) <sdfiyon@gmail.com>
 #
@@ -10,4 +10,4 @@
 DBCheck 版本信息
 """
 
-__version__ = "v2.7.0"
+__version__ = 'v2.7.0'
