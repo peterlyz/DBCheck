@@ -54,12 +54,9 @@ CREATE TABLE IF NOT EXISTS um_permission (
     description     VARCHAR(256) DEFAULT ''
 );
 
--- 初始权限种子数据
+-- 初始权限种子数据（只有一种：有权限）
 INSERT OR IGNORE INTO um_permission(perm_code, perm_name, perm_level) VALUES
-    ('read_only',  '只读',   1),
-    ('read_write', '读写',   2),
-    ('modify',     '修改',   3),
-    ('admin',      '管理',   4);
+    ('access',  '有权限',   1);
 
 -- ============================================
 -- 5. 菜单/模块表
@@ -74,15 +71,34 @@ CREATE TABLE IF NOT EXISTS um_menu (
     status      TINYINT      DEFAULT 1
 );
 
--- 初始菜单种子数据（根据 DBCheck 实际功能）
+-- 初始菜单种子数据（与前端 index.html nav-item id 对应）
 INSERT OR IGNORE INTO um_menu(menu_code, menu_name, parent_id, sort_order) VALUES
-    ('dashboard',     '仪表盘',       0, 1),
-    ('db_check',      '数据库检查',    0, 2),
-    ('slow_query',    '慢查询分析',    0, 3),
-    ('ai_diagnosis',  'AI 诊断',      0, 4),
-    ('plugin_market', '插件市场',      0, 5),
-    ('asset_manage',  '资产管理',      0, 6),
-    ('system_manage', '系统管理',      0, 7);
+    ('home',             '首页',            0, 10),
+    ('wizard',           '数据库巡检',       0, 21),
+    ('server-inspect',   '服务器巡检',       0, 22),
+    ('scheduler',        '任务调度',         0, 23),
+    ('awr',              'AWR报告',         0, 24),
+    ('reports',          '巡检报告',         0, 25),
+    ('server-history',   '历史记录',         0, 26),
+    ('trend',            '趋势分析',         0, 27),
+    ('datasources',     '数据源管理',       0, 31),
+    ('inspection-config','巡检配置',         0, 32),
+    ('baseline-config',  '基线配置',         0, 33),
+    ('server-thresholds', '阈值设置',        0, 34),
+    ('rules',            '规则管理',         0, 35),
+    ('rag',              '知识库',          0, 36),
+    ('plugin-market',    '插件市场',         0, 41),
+    ('sql-editor',       'SQL编辑器',       0, 42),
+    ('remote-shell',     '远程终端',         0, 43),
+    ('monitor-slow',     '慢查询监控',       0, 51),
+    ('monitor-conn',     '连接池监控',       0, 52),
+    ('ai',               'AI助手',          0, 53),
+    ('oracle-client',    'Oracle客户端',     0, 54),
+    ('notifier',         '通知管理',         0, 55),
+    ('apikey',           'API密钥',         0, 56),
+    ('shares',           '共享管理',         0, 57),
+    ('data-management',  '数据管理',         0, 66),
+    ('about',            '关于DBCheck',      0, 67);
 
 -- ============================================
 -- 6. 角色-菜单-权限关联表

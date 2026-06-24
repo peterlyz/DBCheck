@@ -30,7 +30,7 @@ def list_permissions():
 
 
 @menu_bp.route('', methods=['POST'])
-@require_permission('system_manage', min_level=4)
+@require_permission('system_manage')
 def create_menu():
     """创建菜单（管理员）"""
     data = request.get_json(silent=True) or {}
@@ -52,7 +52,7 @@ def create_menu():
 
 
 @menu_bp.route('/<int:mid>', methods=['PUT'])
-@require_permission('system_manage', min_level=4)
+@require_permission('system_manage')
 def update_menu(mid):
     """更新菜单"""
     data = request.get_json(silent=True) or {}

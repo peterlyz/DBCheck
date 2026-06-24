@@ -3,7 +3,7 @@
 认证路由 - 登录/登出/状态
 """
 
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, session
 from user_management.services.auth_service import AuthService
 from user_management.utils.auth_decorator import login_required
 from user_management.services.user_service import UserService
@@ -30,6 +30,14 @@ def login():
 
     result = auth_service.login(username, password)
     if result:
+        # 设置Flask session
+        session['user_id'] = result['user']['id']
+        session['username'] = result['user']['username']
+        # 存角色（用于首页菜单权限判断，roles 已是字符串列表如 ['admin']）
+        roles = result['user'].get('roles', [])
+        session['user_roles'] = roles
+        session['is_admin'] = 'admin' in roles
+        print(f'[DEBUG] login(): session set - user_id={session["user_id"]}, is_admin={session["is_admin"]}, roles={roles}', flush=True)
         return jsonify({'code': 0, 'data': result, 'msg': '登录成功'})
     return jsonify({
         'code': 401,
@@ -41,6 +49,7 @@ def login():
 @login_required
 def logout():
     """用户登出"""
+    session.clear()
     return jsonify({'code': 0, 'msg': '已登出'})
 
 

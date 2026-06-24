@@ -2107,6 +2107,26 @@ async function executeFixSql(taskId, sql) {
   cursor: not-allowed;
   transform: none;
 }
+/* 模式切换按钮 */
+.chat-mode-btn {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  outline: none;
+}
+.chat-mode-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.chat-mode-btn:hover:not(.active) {
+  background: var(--border);
+}
 
 /* 聊天加载动画 */
 .chat-typing {
@@ -2560,7 +2580,33 @@ async function executeFixSql(taskId, sql) {
   background: radial-gradient(ellipse at center, rgba(26,127,55,.15) 0%, transparent 70%);
 }
 
-  </style>
+  
+        /* ═══ 用户管理内嵌模态框 ═══ */
+        .um-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+        }
+        .um-modal-overlay.active { display: flex; }
+        .um-modal {
+            background: var(--bg);
+            border-radius: var(--radius);
+            width: 95vw;
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: var(--shadow);
+            animation: umFadeIn 0.25s ease;
+        }
+        @keyframes umFadeIn {
+            from { opacity: 0; transform: translateY(-12px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        </style>
 
   <link rel="stylesheet" href="/static/codemirror/lib/codemirror.css">
   <link rel="stylesheet" href="/static/codemirror/theme/dracula.css">
@@ -4127,6 +4173,9 @@ function formatBytes(bytes) {
       <div id="user-dropdown" style="display:none;position:absolute;top:100%;right:10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 0;z-index:999;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
         <div style="padding:6px 14px;font-size:11px;color:var(--text-muted);border-bottom:1px solid var(--border);margin-bottom:4px;">已登录</div>
         <div class="dropdown-item" onclick="showPage('account');toggleUserMenu()" style="padding:6px 14px;font-size:12px;cursor:pointer;">👤 用户中心</div>
+        {% if user_role == 'admin' %}
+        <div class="dropdown-item" onclick="showUserManagement();toggleUserMenu()" style="padding:6px 14px;font-size:12px;cursor:pointer;">⚙️ 系统管理</div>
+        {% endif %}
         <div class="dropdown-item" onclick="doLogout()" style="padding:6px 14px;font-size:12px;cursor:pointer;color:var(--danger);">退出登录</div>
       </div>
     </div>
@@ -5042,6 +5091,16 @@ function formatBytes(bytes) {
         <div class="card">
           <div class="card-title"><span>👤</span> 用户中心</div>
           <div id="account-content" style="font-size:13px;">
+            <div style="color:var(--text-muted);text-align:center;padding:20px;">加载中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ Page: 系统管理 ══ -->
+      <div class="page" id="page-um-admin">
+        <div class="card">
+          <div class="card-title"><span>⚙️</span> 系统管理</div>
+          <div id="um-admin-content" style="font-size:13px;">
             <div style="color:var(--text-muted);text-align:center;padding:20px;">加载中...</div>
           </div>
         </div>
@@ -6628,6 +6687,7 @@ function showPage(name) {
   if (name === 'apikey') loadApiKeys();
   if (name === 'server-history') loadServerHistory();
   if (name === 'account') loadAccountPage();
+  if (name === 'um-admin') loadUmAdminPage();
   if (name === 'oracle-client') loadOracleClientConfig();
   if (name === 'plugin-market') loadMarketPlugins();
     if (name === 'remote-shell') {
@@ -10676,6 +10736,10 @@ async function executeFixSql(taskId, sql) {
         <span id="btn-text">登  录</span>
       </button>
 
+      <div style="margin-top:12px;text-align:center;">
+        <a href="/um/login" style="font-size:12px;color:var(--text-muted);text-decoration:none;" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text-muted)'">⚙️ RBAC 系统管理登录</a>
+      </div>
+
       <div class="login-footer">
         <span id="login-version">--</span> · DBCheck © 2026
       </div>
@@ -11724,16 +11788,36 @@ function doPromptResolve(id) {
 // ─── Auth (Login / User Center) ─────────────────
 
 async function checkLogin() {
+  // 先检查 RBAC 登录状态
   try {
-    var r = await fetch('/api/auth/status');
+    var token = localStorage.getItem('um_token');
+    var headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    var r = await fetch('/api/um/auth/status', { headers: headers });
     var d = await r.json();
-    if (!d.logged_in) { showLogin(); return; }
+    if (d.code === 0 && d.data && d.data.logged_in) {
+      window._currentUser = d.data.user;
+      document.getElementById('login-overlay').style.display = 'none';
+      document.body.style.overflow = '';
+      var ue = document.getElementById('topbar-user');
+      ue.style.display = '';
+      document.getElementById('topbar-user-name').textContent = d.data.user.nickname || d.data.user.username;
+      // 已登录，加载菜单权限
+      loadVisibleMenus();
+      return;
+    }
+  } catch(e) {}
+  // RBAC 未登录，尝试旧接口（兼容）
+  try {
+    var r2 = await fetch('/api/auth/status');
+    var d2 = await r2.json();
+    if (!d2.logged_in) { showLogin(); return; }
     document.getElementById('login-overlay').style.display = 'none';
     document.body.style.overflow = '';
-    window._currentUser = d.user;
-    var ue = document.getElementById('topbar-user');
-    ue.style.display = '';
-    document.getElementById('topbar-user-name').textContent = d.user.display_name || d.user.username;
+    window._currentUser = d2.user;
+    var ue2 = document.getElementById('topbar-user');
+    ue2.style.display = '';
+    document.getElementById('topbar-user-name').textContent = d2.user.display_name || d2.user.username;
   } catch(e) { showLogin(); }
 }
 
@@ -11764,57 +11848,68 @@ async function doLogin() {
   err.textContent = '';
   if (!u || !p) { err.textContent = i18n('webui.login_error_empty'); err.style.display = ''; return; }
   try {
-    var r = await fetch('/api/auth/login', {
+    // 调用 RBAC 登录接口
+    var r = await fetch('/api/um/auth/login', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({username: u, password: p})
     });
     var d = await r.json();
-    if (d.ok) {
-      window._currentUser = d.user;
+    if (d.code === 0 && d.data && d.data.token) {
+      localStorage.setItem('um_token', d.data.token);
+      window._currentUser = d.data.user;
       document.getElementById('login-overlay').style.display = 'none';
       document.body.style.overflow = '';
       var ue = document.getElementById('topbar-user');
       ue.style.display = '';
-      document.getElementById('topbar-user-name').textContent = d.user.display_name || d.user.username;
+      document.getElementById('topbar-user-name').textContent = d.data.user.nickname || d.data.user.username;
+      // 登录成功后加载菜单权限
+      loadVisibleMenus();
     } else {
-      err.textContent = i18n(d.error) || i18n('webui.login_error');
+      err.textContent = i18n(d.msg) || i18n('webui.login_error');
       err.style.display = '';
     }
   } catch(e) { err.textContent = i18n('webui.network_error'); err.style.display = ''; }
 }
 
 async function doLogout() {
-  await fetch('/api/auth/logout', {method:'POST'});
-  window._currentUser = null;
-  document.getElementById('login-overlay').style.display = 'flex';
-  showPage('home');
+  // 调用 RBAC 退出登录接口
+  try {
+    await fetch('/api/um/auth/logout', {method:'POST', credentials: 'include'});
+  } catch(e) {}
+  // 只清除认证 token，保留主题设置（dbcheck-theme）
+  localStorage.removeItem('um_token');
+  // 跳转到 RBAC 登录页
+  window.location.href = '/um/login';
 }
 
 async function loadAccountPage() {
   try {
-    var r = await fetch('/api/auth/me');
+    // 调用 RBAC 接口获取当前用户信息
+    var r = await fetch('/api/um/auth/status', { credentials: 'include' });
     var d = await r.json();
     var el = document.getElementById('account-content');
-    if (!d.ok || !d.user) { el.innerHTML = '<div style="color:var(--danger);text-align:center;padding:20px;">加载失败</div>'; return; }
-    var u = d.user;
+    if (d.code !== 0 || !d.data.user) { el.innerHTML = '<div style="color:var(--danger);text-align:center;padding:20px;">加载失败</div>'; return; }
+    var u = d.data.user;
+    var roles = u.roles || [];
+    var roleText = roles.includes('admin') ? '超级管理员' : '普通用户';
     el.innerHTML =
       '<div style="display:flex;gap:24px;flex-wrap:wrap;">' +
         // 左侧：头像 + 信息
         '<div style="flex:1;min-width:280px;">' +
           '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;">' +
-            '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#6c5ce7);display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;font-weight:700;">' + (u.display_name || u.username).charAt(0).toUpperCase() + '</div>' +
+            '<div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#6c5ce7);display:flex;align-items:center;justify-content:center;font-size:24px;color:#fff;font-weight:700;">' + (u.nickname || u.username).charAt(0).toUpperCase() + '</div>' +
             '<div>' +
-              '<div style="font-size:16px;font-weight:600;">' + escapeHtml(u.display_name || u.username) + '</div>' +
-              '<div style="font-size:12px;color:var(--text-muted);">' + (u.role === 'admin' ? '超级管理员' : '普通用户') + ' · ' + (u.created_at || '').slice(0,10) + ' 加入</div>' +
+              '<div style="font-size:16px;font-weight:600;">' + escapeHtml(u.nickname || u.username) + '</div>' +
+              '<div style="font-size:12px;color:var(--text-muted);">' + roleText + ' · 角色: ' + roles.join(', ') + '</div>' +
             '</div>' +
           '</div>' +
           // 表单
           '<div style="display:grid;gap:10px;">' +
             '<div><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px;">用户名</label>' +
             '<input value="' + escapeHtml(u.username) + '" disabled style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text-muted);font-size:13px;box-sizing:border-box;"></div>' +
-            '<div style="display:flex;gap:8px;"><div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px;">显示名称</label>' +
-            '<input id="acct-name" value="' + escapeHtml(u.display_name || '') + '" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;"></div>' +
+            '<div style="display:flex;gap:8px;"><div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px;">昵称</label>' +
+            '<input id="acct-name" value="' + escapeHtml(u.nickname || '') + '" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;"></div>' +
             '<div style="flex:1;"><label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:3px;">邮箱</label>' +
             '<input id="acct-email" value="' + escapeHtml(u.email || '') + '" placeholder="可选" style="width:100%;padding:8px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;"></div></div>' +
             '<div><button class="btn btn-primary" onclick="saveProfile()" style="font-size:12px;">💾 保存信息</button></div>' +
@@ -11829,8 +11924,6 @@ async function loadAccountPage() {
             '<button class="btn btn-primary" onclick="changePassword()" style="font-size:12px;width:100%;">更新密码</button>' +
             '<div id="acct-pw-msg" style="font-size:12px;margin-top:8px;min-height:18px;"></div>' +
           '</div>' +
-          // 退出
-          '<button class="btn btn-ghost" onclick="doLogout()" style="margin-top:12px;width:100%;color:var(--danger);border-color:var(--danger);">退出登录</button>' +
         '</div>' +
       '</div>';
   } catch(e) {
@@ -11842,14 +11935,16 @@ async function saveProfile() {
   var name = document.getElementById('acct-name').value.trim();
   var email = document.getElementById('acct-email').value.trim();
   try {
-    var r = await fetch('/api/auth/update-profile', {
-      method: 'POST',
+    // 调用 RBAC 接口更新用户信息
+    var r = await fetch('/api/um/user/profile', {
+      method: 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({display_name: name, email: email})
+      credentials: 'include',
+      body: JSON.stringify({nickname: name, email: email})
     });
     var d = await r.json();
-    if (d.ok) toastSuccess('保存成功');
-    else toastError(d.error || '保存失败');
+    if (d.code === 0) toastSuccess('保存成功');
+    else toastError(d.msg || '保存失败');
   } catch(e) { toastError('网络错误'); }
 }
 
@@ -11861,15 +11956,17 @@ async function changePassword() {
   if (newPw.length < 6) { msg.style.color = 'var(--danger)'; msg.textContent = '新密码至少6位'; return; }
   if (oldPw === newPw) { msg.style.color = 'var(--danger)'; msg.textContent = '新密码不能与旧密码相同'; return; }
   try {
-    var r = await fetch('/api/auth/change-password', {
-      method: 'POST',
+    // 调用 RBAC 接口修改密码
+    var r = await fetch('/api/um/user/password', {
+      method: 'PUT',
       headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
       body: JSON.stringify({old_password: oldPw, new_password: newPw})
     });
     var d = await r.json();
-    msg.style.color = d.ok ? 'var(--success)' : 'var(--danger)';
-    msg.textContent = d.ok ? d.message : d.error;
-    if (d.ok) { document.getElementById('acct-oldpw').value = ''; document.getElementById('acct-newpw').value = ''; }
+    msg.style.color = d.code === 0 ? 'var(--success)' : 'var(--danger)';
+    msg.textContent = d.code === 0 ? '密码修改成功' : (d.msg || '修改失败');
+    if (d.code === 0) { document.getElementById('acct-oldpw').value = ''; document.getElementById('acct-newpw').value = ''; }
   } catch(e) { msg.style.color = 'var(--danger)'; msg.textContent = '网络错误'; }
 }
 
@@ -12240,13 +12337,17 @@ function renderMarkdown(text) {
   // 2. 行内代码：`code`
   text = text.replace(/`([^`]+)`/g, '<code style="background:rgba(76,175,80,0.1); color:#4caf50; padding:2px 6px; border-radius:4px; font-size:13px">$1</code>');
   
-  // 3. 标题：### text
+  // 2. 水平分割线：--- 或 *** 或 ___
+  text = text.replace(/^(?:---|\*\*\*|___)\s*$/gm, '<hr style="border:none; border-top:1px solid var(--border); margin:12px 0;">');
+
+  // 3. 标题：从大到小匹配
+  text = text.replace(/^#### (.*?)$/gm, '<h6 style="color:var(--text-primary); margin:10px 0 6px 0; font-size:14px; font-weight:600">$1</h6>');
   text = text.replace(/^### (.*?)$/gm, '<h4 style="color:var(--accent); margin:12px 0 8px 0">$1</h4>');
   text = text.replace(/^## (.*?)$/gm, '<h3 style="color:var(--accent); margin:16px 0 10px 0">$1</h3>');
   text = text.replace(/^# (.*?)$/gm, '<h2 style="color:var(--accent); margin:18px 0 12px 0">$1</h2>');
   
-  // 4. 加粗：**text**
-  text = text.replace(/\*\*(.*?)\*\*/g, '<strong style="color:var(--text-primary)">$1</strong>');
+  // 5. 加粗（必须在斜体前面）
+  text = text.replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--text-primary)">$1</strong>');
   
   // 5. 斜体：*text*
   text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
@@ -12257,14 +12358,40 @@ function renderMarkdown(text) {
   // 7. 有序列表：1. item
   text = text.replace(/^(\d+)\. (.*?)$/gm, '<div style="padding-left:16px; margin:4px 0"><span style="color:var(--accent)">$1.</span> $2</div>');
   
-  // 8. 链接：[text](url)
+  // 9. 链接
   text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color:var(--accent); text-decoration:none">$1 ↗</a>');
+
+  // 10. 表格
+  if (/^\|.+\|$/m.test(text)) {
+    text = _renderMarkdownTable(text);
+  }
   
   // 9. 段落（空行分隔）
   text = text.replace(/\n\n/g, '<br><br>');
   text = text.replace(/\n/g, '<br>');
   
   return text;
+}
+
+// 表格渲染辅助函数
+function _renderMarkdownTable(text) {
+  var lines = text.split('\n');
+  var html = '';
+  var inTable = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    if (/^[\|:\s\-]+$/.test(line)) continue; // 跳过分隔行
+    if (line.startsWith('|') && line.endsWith('|')) {
+      if (!inTable) { inTable = true; html += '<table style="width:100%; border-collapse:collapse; margin:8px 0; font-size:13px">'; }
+      var cells = line.slice(1, -1).split('|').map(function(c) { return c.trim(); });
+      html += '<tr>' + cells.map(function(c) { return '<td style="padding:6px 10px; border:1px solid var(--border);">' + c + '</td>'; }).join('') + '</tr>';
+    } else {
+      if (inTable) { inTable = false; html += '</table>'; }
+      html += line + '\n';
+    }
+  }
+  if (inTable) html += '</table>';
+  return html;
 }
 
 // ─── 上下文感知 (v2.6.2) ──────────────────────
@@ -12365,19 +12492,36 @@ function addChatMessage(text, type, isHtml) {
   return div;
 }
 
+let _thinkingShownAt = 0;  // Thinking 显示的时间戳
+
 function showTypingIndicator() {
+  hideTypingIndicator();  // 先清除旧的（取消之前的延迟删除）
+  _thinkingShownAt = Date.now();
+  console.log('[AI Chat] 显示 Thinking...');
   const container = document.getElementById('chat-messages');
   const div = document.createElement('div');
-  div.className = 'chat-typing';
+  div.className = 'chat-msg ai';
   div.id = 'chat-typing-indicator';
-  div.innerHTML = '<span></span><span></span><span></span>';
+  div.innerHTML = '<span style="color:#f0ad4e;font-weight:600;">💭 Thinking<span class="thinking-dots">...</span></span>';
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
 }
 
 function hideTypingIndicator() {
+  console.log('[AI Chat] 隐藏 Thinking...');
   const indicator = document.getElementById('chat-typing-indicator');
-  if (indicator) indicator.remove();
+  if (!indicator) return;
+  // 至少显示 800ms，避免 Ollama 响应太快一闪而过
+  var elapsed = Date.now() - _thinkingShownAt;
+  var delay = Math.max(0, 800 - elapsed);
+  if (delay > 0) {
+    setTimeout(function() {
+      var el = document.getElementById('chat-typing-indicator');
+      if (el) el.remove();
+    }, delay);
+  } else {
+    indicator.remove();
+  }
 }
 
 function setInputEnabled(enabled) {
@@ -12581,10 +12725,10 @@ async function sendChatMessage() {
 
     hideTypingIndicator();
 
-    // 创建 AI 消息占位符
-    const aiMsgEl = addChatMessage('', 'ai', true);
     let fullContent = '';
-    let receivedFirstChunk = false;
+    let thinkingContent = '';
+    let thinkingEl = null;
+    let aiMsgEl = null;  // 延迟创建，等第一个 chunk 到达
 
     // 读取 SSE 流
     const reader = res.body.getReader();
@@ -12606,22 +12750,133 @@ async function sendChatMessage() {
 
           try {
             const data = JSON.parse(dataStr);
-            if (data.type === 'start') {
-              // 开始接收
+            if (data.type === 'thinking') {
+              // 收到思考过程，创建可折叠的 thinking 块（在 AI 消息前面）
+              thinkingContent += data.content;
+              if (!thinkingEl) {
+                thinkingEl = document.createElement('details');
+                thinkingEl.className = 'thinking-block';
+                thinkingEl.style.cssText = 'margin-bottom:8px; border:1px solid var(--border); border-radius:8px; padding:8px 12px; background:var(--surface2);';
+                const summary = document.createElement('summary');
+                summary.textContent = '🤔 AI 思考过程';
+                summary.style.cssText = 'cursor:pointer; font-size:13px; color:var(--text-muted);';
+                thinkingEl.appendChild(summary);
+                const pre = document.createElement('pre');
+                pre.id = 'thinking-content';
+                pre.style.cssText = 'margin:8px 0 0 0; padding:8px; background:var(--bg); border-radius:6px; font-size:12px; white-space:pre-wrap; max-height:300px; overflow:auto;';
+                thinkingEl.appendChild(pre);
+                // 插入到聊天区域（在 AI 消息前面）
+                const chatMessages = document.getElementById('chat-messages');
+                chatMessages.appendChild(thinkingEl);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+              }
+              // 实时更新 thinking 内容
+              const pre = document.getElementById('thinking-content');
+              if (pre) pre.textContent = thinkingContent;
+
             } else if (data.type === 'chunk') {
-              if (!receivedFirstChunk) {
-                receivedFirstChunk = true;
-                aiMsgEl.innerHTML = '';  // 清空"正在输入"动画
+              // 第一次收到 chunk 时创建 AI 消息气泡
+              if (!aiMsgEl) {
+                aiMsgEl = addChatMessage('', 'ai', true);
+                // 如果已有 thinking 块，把它移到 AI 消息前面
+                if (thinkingEl && thinkingEl.parentNode) {
+                  thinkingEl.parentNode.removeChild(thinkingEl);
+                  aiMsgEl.parentNode.insertBefore(thinkingEl, aiMsgEl);
+                }
               }
               fullContent += data.content;
               // Markdown 渲染
-              aiMsgEl.innerHTML = renderMarkdown(fullContent);
+              let contentDiv = aiMsgEl.querySelector('.ai-content');
+              if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'ai-content';
+                aiMsgEl.appendChild(contentDiv);
+              }
+              contentDiv.innerHTML = renderMarkdown(fullContent);
               // 滚动到底部
               const chatMessages = document.getElementById('chat-messages');
               chatMessages.scrollTop = chatMessages.scrollHeight;
+
+            } else if (data.type === 'inspect_result') {
+              // 巡检简单查询结果
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', true);
+              let contentDiv = aiMsgEl.querySelector('.ai-content');
+              if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'ai-content';
+                aiMsgEl.appendChild(contentDiv);
+              }
+              contentDiv.innerHTML = renderMarkdown(data.message);
+
+            } else if (data.type === 'inspect_start') {
+              // 巡检任务已启动
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', true);
+              let contentDiv = aiMsgEl.querySelector('.ai-content');
+              if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'ai-content';
+                aiMsgEl.appendChild(contentDiv);
+              }
+              contentDiv.innerHTML = renderMarkdown(data.message);
+              // 启动轮询巡检状态
+              currentChatTaskId = data.task_id;
+              showChatSpinner();
+              pollChatTaskStatus(data.task_id);
+
+            } else if (data.type === 'inspect_ask') {
+              // 需要用户选择数据源
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', false);
+              aiMsgEl.innerHTML = '<span style="color:var(--text-secondary)">' + data.message + '</span>';
+              // 显示选择按钮
+              const container = document.getElementById('chat-messages');
+              const wrapper = document.createElement('div');
+              wrapper.className = 'chat-msg ai';
+              wrapper.style.padding = '8px 16px';
+              (data.candidates || []).forEach(function(name) {
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-primary btn-sm me-2 mb-2';
+                btn.style.borderRadius = '16px';
+                btn.style.fontSize = '13px';
+                btn.textContent = name;
+                btn.onclick = function() {
+                  sendChatMessageWithContext('巡检 ' + name, {db_type: data.db_type, db_name: name});
+                };
+                wrapper.appendChild(btn);
+              });
+              container.appendChild(wrapper);
+              container.scrollTop = container.scrollHeight;
+              setInputEnabled(true);
+              return;  // 不需要继续读取 SSE
+
+            } else if (data.type === 'inspect_result') {
+              // 巡检简单查询结果
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', true);
+              let contentDiv = aiMsgEl.querySelector('.ai-content');
+              if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'ai-content';
+                aiMsgEl.appendChild(contentDiv);
+              }
+              contentDiv.innerHTML = renderMarkdown(data.message);
+
+            } else if (data.type === 'inspect_start') {
+              // 巡检任务已启动
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', true);
+              let contentDiv = aiMsgEl.querySelector('.ai-content');
+              if (!contentDiv) {
+                contentDiv = document.createElement('div');
+                contentDiv.className = 'ai-content';
+                aiMsgEl.appendChild(contentDiv);
+              }
+              contentDiv.innerHTML = renderMarkdown(data.message);
+              currentChatTaskId = data.task_id;
+              showChatSpinner();
+              pollChatTaskStatus(data.task_id);
+
             } else if (data.type === 'done') {
               // 完成
             } else if (data.type === 'error') {
+              if (!aiMsgEl) aiMsgEl = addChatMessage('', 'ai', true);
               aiMsgEl.innerHTML = `❌ ${data.message}`;
             }
           } catch (e) {
@@ -13285,7 +13540,7 @@ async function deleteBackupHistory(recordId) {
   </div>
   <div class="chat-input-area" style="flex-direction:column;padding:8px 12px;gap:8px">
     <textarea id="chat-textarea" class="chat-textarea" rows="2"
-              placeholder="输入巡检需求或数据库问题..."
+              placeholder="输入问题或巡检需求，如：检查MySQL连接数..."
               onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault();sendChatMessage()}"></textarea>
     <div style="display:flex;align-items:center;justify-content:space-between">
       <span id="chat-hint" style="font-size:11px;color:var(--text-secondary)">Enter 发送，Shift+Enter 换行</span>
@@ -16986,10 +17241,90 @@ function mkdirRemote() {
       const d = await r.json();
       if (d.ok) { toastSuccess('已重载 ' + d.loaded + ' 个插件'); loadMarketPlugins(); }
       else toastError(d.error || '重载失败');
-    } catch(e) { toastError('重载失败: ' + e.message); }
+    }     catch(e) { toastError('重载失败: ' + e.message); }
   }
+
+  // ═══ 用户管理内嵌模态框 ═══
+  function showUserManagement() {
+      var iframe = document.getElementById('userManagementIframe');
+      iframe.src = '/um/admin?embed=1';
+      // iframe 加载完成后同步主题
+      iframe.onload = function() {
+        var theme = document.documentElement.getAttribute('data-theme') || 'light';
+        iframe.contentWindow.postMessage({ type: 'theme-sync', theme: theme }, '*');
+      };
+      document.getElementById('userManagementModal').classList.add('active');
+  }
+  function closeUserManagement() {
+      document.getElementById('userManagementModal').classList.remove('active');
+      document.getElementById('userManagementIframe').src = '';
+  }
+
+  // 响应 iframe 的主题请求
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'request-theme') {
+      var iframe = document.getElementById('userManagementIframe');
+      if (iframe && iframe.contentWindow) {
+        var theme = document.documentElement.getAttribute('data-theme') || 'light';
+        iframe.contentWindow.postMessage({ type: 'theme-sync', theme: theme }, '*');
+      }
+    }
+  });
+
+  // ═══ 左侧菜单权限控制 ═══
+  async function loadVisibleMenus() {
+    try {
+      // 带 JWT token 请求
+      var token = localStorage.getItem('um_token');
+      var headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+      var res = await fetch('/api/um/user/menus', {
+        credentials: 'include',
+        headers: headers
+      });
+      var d = await res.json();
+      if (d.code !== 0) return;
+      var visibleCodes = (d.data || []).map(function(m) { return m.menu_code; });
+      console.log('[MenuPerm] visible menus:', visibleCodes);
+      // 隐藏所有 nav-item
+      var items = document.querySelectorAll('.sidebar-nav .nav-item');
+      items.forEach(function(el) {
+        var id = el.id;       // nav-home / nav-wizard / ...
+        if (!id) return;
+        var code = id.replace('nav-', '');  // home / wizard / ...
+        el.style.display = visibleCodes.includes(code) ? '' : 'none';
+      });
+      // 隐藏没有可见子项的 nav-section
+      var sections = document.querySelectorAll('.sidebar-nav .nav-section');
+      sections.forEach(function(sec) {
+        var prev = sec.nextElementSibling;
+        var hasVisible = false;
+        while (prev && !prev.classList.contains('nav-section')) {
+          if (prev.classList.contains('nav-item') && prev.style.display !== 'none') {
+            hasVisible = true;
+            break;
+          }
+          prev = prev.nextElementSibling;
+        }
+        sec.style.display = hasVisible ? '' : 'none';
+      });
+    } catch(e) { console.warn('[MenuPerm] load failed:', e); }
+  }
+  // 页面加载后立即执行
+  loadVisibleMenus();
   </script>
 </div><!-- .app-layout -->
+
+    <!-- 用户管理内嵌模态框 -->
+    <div id="userManagementModal" class="um-modal-overlay">
+      <div class="um-modal" style="width:880px;max-width:90vw;height:84vh;display:flex;flex-direction:column;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);">
+          <strong style="font-size:15px;">系统管理</strong>
+          <button onclick="closeUserManagement()" style="border:none;background:none;font-size:20px;cursor:pointer;color:var(--text);">×</button>
+        </div>
+        <iframe id="userManagementIframe" style="flex:1;border:none;"></iframe>
+      </div>
+    </div>
 </body>
 </html>
 

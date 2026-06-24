@@ -27,12 +27,11 @@ class DBManager:
         if self._initialized:
             return
         self._initialized = True
-        # __file__ = user_management/models/db_manager.py
-        # dirname x3 = 项目根目录
+        # DB 放在项目目录 user_management/db/ 下，跟着项目走
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self._db_dir = os.path.join(base_dir, 'pro_data')
-        self._db_path = os.path.join(self._db_dir, 'um_rbac.db')
+        self._db_dir = os.path.join(base_dir, 'user_management', 'db')
         os.makedirs(self._db_dir, exist_ok=True)
+        self._db_path = os.path.join(self._db_dir, 'um_rbac.db')
         self._init_schema()
 
     def _init_schema(self):

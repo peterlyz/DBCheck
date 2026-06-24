@@ -12,8 +12,8 @@ DBCheck Web UI - Flask 应用
 数据库巡检工具 Web 界面
 """
 # gevent monkey patch 必须放在所有 import 之前
-import gevent.monkey
-gevent.monkey.patch_all()
+# import gevent.monkey
+# gevent.monkey.patch_all()
 
 import os, sys, platform, threading, datetime, json, uuid, time, re, random, sqlite3
 from pathlib import Path
@@ -251,6 +251,8 @@ try:
 
     # RBAC 系统管理页面
     @app.route('/um/admin')
+    @app.route('/um/')
+    @app.route('/um')
     def um_admin_page():
         from flask import render_template
         return render_template('user_management/admin.html')
@@ -269,12 +271,12 @@ try:
                 with open(seed_flag, 'w') as f:
                     f.write('1')
             except Exception as e:
-                print(f"  ⚠️ RBAC 种子数据初始化失败: {e}")
+                print(f"  [WARN] RBAC 种子数据初始化失败: {e}")
 
     _init_rbac_seed()
-    print("  ✅ RBAC 用户管理模块已加载")
+    print("  [OK] RBAC 用户管理模块已加载")
 except ImportError as e:
-    print(f"  ⚠️ RBAC 用户管理模块加载失败: {e}")
+    print(f"  [WARN] RBAC 用户管理模块加载失败: {e}")
 
 # ── 工具函数 ───────────────────────────────────────────────
 def _ts():
@@ -1273,6 +1275,18 @@ def test_ssh_connection(host, port=22, username='root', password=None, key_file=
 # ── 路由 ────────────────────────────────────────────────────
 @app.route('/')
 def index():
+    """首页 - 需要登录"""
+    # 检查登录状态（Flask session 或 RBAC token）
+    from flask import session
+    if not session.get('user_id'):
+        # 未登录，重定向到 RBAC 登录页
+        from flask import redirect, url_for
+        return redirect('/um/login')
+    
+    # 获取用户角色信息（直接从 session 读，登录时已写入）
+    is_admin = session.get('is_admin', False)
+    user_role = 'admin' if is_admin else 'user'
+    print(f'[DEBUG] index(): user_id={session.get("user_id")}, is_admin={is_admin}, user_role={user_role}', flush=True)
     # 注入当前语言到前端（页面加载时就知道语言，无需额外请求）
     try:
         from i18n import get_lang, get_all_translations, get_language_display
@@ -1291,7 +1305,8 @@ def index():
         pass
     return render_template('index.html', version=__version__, lang=lang, i18n_data=i18n_data,
                            pro_available=pro_available,
-                           admin_token=get_admin_token())
+                           admin_token=get_admin_token(),
+                           user_role=user_role)
 
 
 @app.route('/api/i18n')
@@ -2048,7 +2063,7 @@ def api_download_all_drivers():
             # 完成
             _all_drivers_download_progress['status'] = 'done'
             _all_drivers_download_progress['progress'] = 100
-            _all_drivers_download_progress['message'] = '✅ 所有驱动下载并安装成功！'
+            _all_drivers_download_progress['message'] = '[OK] 所有驱动下载并安装成功！'
 
         except Exception as e:
             _all_drivers_download_progress['status'] = 'error'
@@ -2882,11 +2897,11 @@ def _run_server_inspect_task(task_id, ssh_info):
             return
 
         hostname = result.get('hostname', 'unknown')
-        _emit('log', {'msg': f"[{_ts()}] ✅ 连接成功，主机名: {hostname}"})
+        _emit('log', {'msg': f"[{_ts()}] [OK] 连接成功，主机名: {hostname}"})
         _emit('log', {'msg': f"[{_ts()}] 📊 健康评分: {result.get('health_score', 0)} 分 ({result.get('health_status', '')})"})
 
         for issue in result.get('issues', []):
-            _emit('log', {'msg': f"[{_ts()}] ⚠️ {issue}"})
+            _emit('log', {'msg': f"[{_ts()}] [WARN] {issue}"})
 
         # 网络检测日志
         net = result.get('network', {})
@@ -2908,9 +2923,9 @@ def _run_server_inspect_task(task_id, ssh_info):
         ok, report_path = generate_server_report(result)
 
         if ok:
-            _emit('log', {'msg': f"[{_ts()}] ✅ 报告已生成: {os.path.basename(report_path)}"})
+            _emit('log', {'msg': f"[{_ts()}] [OK] 报告已生成: {os.path.basename(report_path)}"})
         else:
-            _emit('log', {'msg': f"[{_ts()}] ⚠️ 报告生成失败: {report_path}"})
+            _emit('log', {'msg': f"[{_ts()}] [WARN] 报告生成失败: {report_path}"})
             report_path = None
 
         # 保存巡检历史
@@ -2926,7 +2941,7 @@ def _run_server_inspect_task(task_id, ssh_info):
             )
             _emit('log', {'msg': f"[{_ts()}] 💾 巡检历史已保存"})
         except Exception as e:
-            _emit('log', {'msg': f"[{_ts()}] ⚠️ 历史保存失败: {e}"})
+            _emit('log', {'msg': f"[{_ts()}] [WARN] 历史保存失败: {e}"})
 
         if task:
             task['status'] = 'done'
@@ -6712,14 +6727,121 @@ def execute_simple_query(db_info: dict, db_type: str, scope: str) -> str:
     return '\n'.join(results)
 
 
+def _stream_inspection_response(data, message, session_id, chat_context):
+    """巡检意图：解析→匹配数据源→执行巡检，通过SSE返回结果"""
+    import time
+
+    # 1. 解析意图
+    intent = parse_intent(message)
+    db_type = intent.get('db_type', 'unknown')
+    db_name = intent.get('db_name', '')
+    scope = intent.get('scope', 'all')
+    need_report = intent.get('need_report', scope == 'all')
+
+    print(f'[AI Stream] 巡检意图: db_type={db_type}, db_name={db_name}, scope={scope}', flush=True)
+
+    # 2. 匹配数据源
+    ds = None
+    matched_name = None
+
+    if db_name:
+        ds = match_datasource(db_name)
+        matched_name = db_name
+
+    # 名称匹配失败，尝试按 db_type 筛选
+    if not ds and db_type != 'unknown' and db_type:
+        candidates = list_instances_by_type(db_type)
+        if len(candidates) == 1:
+            ds = match_datasource(candidates[0])
+            matched_name = candidates[0]
+        elif len(candidates) > 1:
+            names_str = '、'.join(candidates)
+            yield f"data: {json.dumps({'type': 'inspect_ask', 'message': f'找到 {len(candidates)} 个{db_type.upper()}数据源：{names_str}，请选择要巡检的实例。', 'candidates': candidates, 'db_type': db_type}, ensure_ascii=False)}\n\n"
+            return
+
+    if not ds:
+        # 尝试从请求体获取连接参数
+        ds = {
+            'host': data.get('host', ''),
+            'port': data.get('port', 3306),
+            'user': data.get('user', ''),
+            'password': data.get('password', ''),
+            'database': data.get('database', ''),
+            'service_name': data.get('service_name', ''),
+            'sid': data.get('sid', ''),
+        }
+
+    if not ds or not ds.get('host'):
+        if db_name and db_type != 'unknown' and db_type:
+            candidates = list_instances_by_type(db_type)
+            if candidates:
+                names_str = '、'.join(candidates)
+                yield f"data: {json.dumps({'type': 'inspect_ask', 'message': f'未找到「{db_name}」，可用的{db_type.upper()}数据源有：{names_str}。', 'candidates': candidates, 'db_type': db_type}, ensure_ascii=False)}\n\n"
+                return
+        yield f"data: {json.dumps({'type': 'error', 'message': '[WARN] 无法确定巡检目标。请指定数据源名称（如"巡检 MySQL-01 的连接数"）或在上下文中选择数据源。'}, ensure_ascii=False)}\n\n"
+        return
+
+    # 3. 执行简单查询或启动巡检任务
+    if scope in ('connection_count', 'lock_wait', 'slow_queries') and not need_report:
+        try:
+            result = execute_simple_query(ds, db_type, scope)
+            yield f"data: {json.dumps({'type': 'inspect_result', 'message': result, 'scope': scope, 'db_name': matched_name or ds.get('name', '')}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'[WARN] 执行查询失败: {e}'}, ensure_ascii=False)}\n\n"
+        return
+
+    # 全库巡检：启动任务
+    task_id = str(uuid.uuid4())
+    db_info = {
+        'ip': ds.get('host', ''),
+        'port': int(ds.get('port', 3306)),
+        'user': ds.get('user', ''),
+        'password': ds.get('password', ''),
+        'database': ds.get('database') or ('postgres' if db_type == 'pg' else ('DAMENG' if db_type == 'dm' else '')),
+        'service_name': ds.get('service_name') or ds.get('sid'),
+        'name': ds.get('name', db_name or ds.get('host', '')),
+    }
+
+    inspector_name = data.get('inspector_name', 'Jack')
+    tasks[task_id] = {
+        'id': task_id,
+        'db_type': db_type,
+        'db_info': db_info,
+        'inspector': inspector_name,
+        'status': 'running',
+        'started_at': datetime.datetime.now().isoformat(),
+    }
+
+    task_func_map = {
+        'mysql': run_inspection_task,
+        'pg': run_inspection_task,
+        'oracle': run_inspection_task,
+        'dm': run_inspection_task,
+        'sqlserver': run_inspection_task,
+        'tidb': run_inspection_task,
+        'ivorysql': run_inspection_task,
+        'kingbase': run_inspection_task,
+        'yashandb': run_inspection_task,
+        'gbase': run_inspection_task,
+    }
+    task_func = task_func_map.get(db_type, run_inspection_task)
+
+    t = threading.Thread(target=task_func, args=(task_id, db_info, inspector_name))
+    t.daemon = True
+    t.start()
+
+    # 通过 SSE 告诉前端巡检已启动
+    yield f"data: {json.dumps({'type': 'inspect_start', 'task_id': task_id, 'message': f'🔍 已启动 **{matched_name or db_name or db_type}** 的巡检任务...', 'db_name': matched_name or ds.get('name', ''), 'host': ds.get('host', ''), 'port': ds.get('port', ''), 'db_type': db_type}, ensure_ascii=False)}\n\n"
+
+
 @app.route('/api/chat/stream', methods=['POST'])
 def api_chat_stream():
-    """SSE 流式返回 AI 回复（v2.6.3）"""
+    """SSE 流式返回 AI 回复（v2.6.3+）自动意图分类"""
     try:
         data = request.get_json() or {}
         message = data.get('message', '')
         session_id = data.get('session_id', 'default')
-        
+
         # 提取上下文
         chat_context = {
             'page': data.get('page', 'unknown'),
@@ -6730,27 +6852,37 @@ def api_chat_stream():
             'sql_content': data.get('sql_content', ''),
             'template_id': data.get('template_id', None),
         }
-        
+
         if not message:
             return jsonify({'error': '消息不能为空'}), 400
-        
-        # 构建 prompt（复用 _answer_chat_qa 的逻辑）
+
+        # ═══ 意图分类（自动判断问答 vs 巡检）═══
+        chat_intent = _classify_chat_intent(message)
+        print(f'[AI Stream] 意图分类: "{message[:40]}" → {chat_intent}', flush=True)
+
+        # ═══ 巡检模式：直接执行巡检 ═══
+        if chat_intent == 'inspect':
+            return Response(
+                _stream_inspection_response(data, message, session_id, chat_context),
+                mimetype='text/event-stream'
+            )
+
+        # ═══ 问答模式：流式 LLM 回复（原有逻辑）═══
         cfg = _load_ai_config()
         backend = cfg.get('backend', 'ollama')
         rag_cfg = cfg.get('rag', {})
         rag_enabled = rag_cfg.get('enabled', True) if isinstance(rag_cfg, dict) else True
-        
+
         # 检查 AI 后端是否可用
         ai_available = backend in ('ollama', 'openai')
         if backend == 'openai' and not cfg.get('online_enabled', False):
             ai_available = False
-        
+
         if not ai_available:
             def gen_error():
-                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 后端未启用'})}\n\n"
+                yield f"data: {json.dumps({'type': 'error', 'message': 'AI 后端未启用'}, ensure_ascii=False)}\n\n"
             return Response(gen_error(), mimetype='text/event-stream')
-        
-        # 构建 system_prompt（含上下文）
+
         system_prompt = """你是 DBCheck 数据库运维智能助手，专门帮助用户解答数据库运维、性能优化、故障排查等方面的问题。
 
 回答规则：
@@ -6899,7 +7031,9 @@ def api_chat_stream():
         return Response(generate(), mimetype='text/event-stream')
     
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        print(f'[AI Stream] 顶层异常: {e}', file=sys.stderr, flush=True)
+        error_json = json.dumps({'type': 'error', 'message': str(e)})
+        return Response(f"data: {error_json}\n\n", mimetype='text/event-stream')
 
 
 @app.route('/api/chat', methods=['POST'])
@@ -6929,7 +7063,7 @@ def api_chat():
             return jsonify({
                 'ok': True,
                 'type': 'text',
-                'message': '✅ 对话已清空，开始新的对话。',
+                'message': '[OK] 对话已清空，开始新的对话。',
                 'cleared': True,
             })
 

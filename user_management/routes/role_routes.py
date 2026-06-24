@@ -14,7 +14,7 @@ role_service = RoleService()
 
 
 @role_bp.route('/list', methods=['GET'])
-@require_permission('system_manage', min_level=1)
+@require_permission('system_manage')
 def list_roles():
     """获取角色列表"""
     roles = role_service.list_roles()
@@ -22,7 +22,7 @@ def list_roles():
 
 
 @role_bp.route('', methods=['POST'])
-@require_permission('system_manage', min_level=3)
+@require_permission('system_manage')
 def create_role():
     """创建角色"""
     data = request.get_json(silent=True) or {}
@@ -50,7 +50,7 @@ def create_role():
 
 
 @role_bp.route('/<int:rid>', methods=['GET'])
-@require_permission('system_manage', min_level=1)
+@require_permission('system_manage')
 def get_role(rid):
     """获取角色详情（含菜单权限）"""
     role = role_service.get_role(rid)
@@ -60,7 +60,7 @@ def get_role(rid):
 
 
 @role_bp.route('/<int:rid>', methods=['PUT'])
-@require_permission('system_manage', min_level=3)
+@require_permission('system_manage')
 def update_role(rid):
     """更新角色"""
     data = request.get_json(silent=True) or {}
@@ -82,7 +82,7 @@ def delete_role(rid):
 
 
 @role_bp.route('/<int:rid>/menu-perm', methods=['GET'])
-@require_permission('system_manage', min_level=1)
+@require_permission('system_manage')
 def get_role_menu_perm(rid):
     """获取角色的菜单权限"""
     perms = role_service.get_menu_permissions(rid)
@@ -90,7 +90,7 @@ def get_role_menu_perm(rid):
 
 
 @role_bp.route('/<int:rid>/menu-perm', methods=['PUT'])
-@require_permission('system_manage', min_level=4)
+@require_permission('system_manage')
 def set_role_menu_perm(rid):
     """设置角色对各菜单的权限级别"""
     data = request.get_json(silent=True) or {}

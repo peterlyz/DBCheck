@@ -58,3 +58,14 @@ class UserService:
 
     def get_user_by_username(self, username: str) -> dict:
         return self.user_model.get_by_username(username)
+
+    def count_users_by_role(self, role_code: str) -> int:
+        """统计拥有指定角色的用户数量"""
+        sql = """
+            SELECT COUNT(DISTINCT ur.user_id) as cnt
+            FROM um_user_role ur
+            JOIN um_role r ON ur.role_id = r.id
+            WHERE r.role_code = ?
+        """
+        row = self.db.query_one(sql, (role_code,))
+        return row['cnt'] if row else 0
