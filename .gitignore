@@ -47,3 +47,4 @@ drivers_bak/*
 commit_msg.txt
 docker_images/*
 *.zip
+um_rbac.db
