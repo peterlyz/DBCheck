@@ -63,7 +63,7 @@ docker run -d -p 5003:5003 \
   ghcr.io/fiyo/dbcheck:latest
 ```
 
-Visit **http://localhost:5003**. Default credentials are `dbcheck` / `dbcheck` (change your password in Account Center after first login).
+Visit **http://localhost:5003**. Default credentials are `admin` / `admin123` (change your password in Account Center after first login).
 
 ### docker-compose (Recommended)
 
@@ -96,6 +96,7 @@ python web_ui.py
 ```
 
 Visit **http://localhost:5003**.
+
 
 ### CLI Mode
 

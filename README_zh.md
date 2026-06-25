@@ -63,7 +63,7 @@ docker run -d -p 5003:5003 \
   ghcr.io/fiyo/dbcheck:latest
 ```
 
-访问 **http://localhost:5003**，默认账号密码均为 `dbcheck`（首次登录后请在账户中心修改密码）。
+访问 **http://localhost:5003**，默认账号为 `admin`，密码为 `admin123`（首次登录后请在账户中心修改密码）。
 
 ### docker-compose（推荐）
 
