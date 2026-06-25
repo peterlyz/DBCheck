@@ -389,7 +389,7 @@ This project references the following works:
 
 <img src="snapshot/pay-en.png" alt="QR Code" width="800" />
 
-<img src="snapshot/dbcheck-badge.png" alt="DBCheck Supporter Badge" width="400" />
+<img src="snapshot/dbcheck-badge-800w.png" alt="DBCheck Supporter Badge" width="800" />
 
 > Please specify your name or nickname when sponsoring ❤️
 
