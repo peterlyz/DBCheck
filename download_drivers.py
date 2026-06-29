@@ -25,7 +25,10 @@ import urllib.error
 import re
 from pathlib import Path
 
-DRIVERS_ZIP_URL = "https://atomgit.com/wfgyj/DBCheck/releases/download/drivers/drivers.zip"
+DRIVERS_ZIP_URLS = [
+    "https://github.com/fiyo/DBCheck/releases/download/drivers/drivers.zip",
+    "https://atomgit.com/wfgyj/DBCheck/releases/download/drivers/drivers.zip",
+]
 DRIVERS_DIR = "drivers"
 
 
@@ -107,21 +110,29 @@ def download_drivers(target_dir=None, progress_callback=None):
         if progress_callback:
             progress_callback('downloading', 0, 100, '正在从 GitHub Releases 下载驱动包...')
 
-        print(f'[DBCheck Drivers] 正在下载: {DRIVERS_ZIP_URL}')
-        try:
-            _urlretrieve_with_progress(
-                DRIVERS_ZIP_URL, tmp_zip,
-                callback=lambda d, t, speed='', dl='': (
-                    progress_callback('downloading', int(d / max(t, 1) * 100) if t else 0, 100,
-                                      f'下载中 {dl} {speed}')
-                    if progress_callback else None
+        print(f'[DBCheck Drivers] 正在下载: {DRIVERS_ZIP_URLS[0]}')
+        last_err = None
+        for url in DRIVERS_ZIP_URLS:
+            try:
+                _urlretrieve_with_progress(
+                    url, tmp_zip,
+                    callback=lambda d, t, speed='', dl='': (
+                        progress_callback('downloading', int(d / max(t, 1) * 100) if t else 0, 100,
+                                          f'下载中 {dl} {speed}')
+                        if progress_callback else None
+                    )
                 )
-            )
-        except Exception as dl_err:
+                break  # 成功就跳出
+            except Exception as dl_err:
+                last_err = dl_err
+                print(f'[DBCheck Drivers] {url[:60]}... 失败: {dl_err}')
+                continue
+        else:
+            # 所有 URL 都失败了
             raise RuntimeError(
-                f'下载失败（{dl_err}），请检查网络连接。\n\n'
+                f'下载失败（{last_err}），请检查网络连接。\n\n'
                 f'如无法自动下载，可手动访问以下链接下载 drivers.zip：\n'
-                f'  {DRIVERS_ZIP_URL}\n'
+                f'  {DRIVERS_ZIP_URLS[0]}\n'
                 f'下载后解压到 DBCheck/drivers/ 目录即可。'
             )
 
@@ -130,7 +141,7 @@ def download_drivers(target_dir=None, progress_callback=None):
         if file_size < 10 * 1024 * 1024:
             raise RuntimeError(
                 f'下载的文件过小 ({file_size:,} 字节)，文件可能不完整。\n'
-                f'请检查网络后重试，或手动下载：{DRIVERS_ZIP_URL}'
+                f'请检查网络后重试，或手动下载：{DRIVERS_ZIP_URLS[0]}'
             )
 
         if progress_callback:
