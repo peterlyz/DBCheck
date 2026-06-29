@@ -50,14 +50,15 @@ RUN python -m venv /opt/venv \
 RUN /opt/venv/bin/pip install --no-cache-dir dmpython>=1.0.0 \
     || echo "WARNING: dmpython installation failed (DM8 support disabled)."
 
-# Download and extract drivers.zip from GitHub Releases (non-fatal)
+# Download and extract drivers.zip from GitHub Releases (fatal if failed)
 # Provides: Oracle client libs, YashanDB wheel, etc.
-# If download fails, related DB types will be disabled at runtime.
-RUN curl -fSL "https://github.com/fiyo/Acdante DB Inspector/releases/download/drivers/drivers.zip" \
+# NOTE: drivers.zip is hosted on GitHub Releases, ensure the URL is accessible during build.
+# If download fails, the build will error out intentionally (no silent skip).
+RUN curl -fSL "https://atomgit.com/wfgyj/DBCheck/releases/download/drivers/drivers.zip" \
     -o /tmp/drivers.zip \
     && unzip -o /tmp/drivers.zip -d /build/ \
     && rm -f /tmp/drivers.zip \
-    || echo "WARNING: drivers.zip download failed (Oracle/YashanDB drivers not included)."
+    || (echo "ERROR: drivers.zip download failed! Please check the URL or manually place drivers in drivers/ directory." && exit 1)
 
 # Install YashanDB wheel (if downloaded successfully)
 RUN if [ -f /build/drivers/yashandb/yasdb-1.2.0-py3-none-any.whl ]; then \
