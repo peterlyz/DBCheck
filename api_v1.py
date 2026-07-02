@@ -632,25 +632,30 @@ def admin_get_token():
 
 @api_v1.route('/plugins', methods=['GET'])
 def api_list_plugins():
-    """列出所有已安装插件（包括市场中没有的）"""
+    """列出所有已安装插件（包括市场中没有的），支持来源和分类标签"""
     try:
         import os
         from plugin_core import PluginRegistry
         
-        # 1. 获取已注册的插件
+        # 1. 获取已注册的插件（通过 plugin_core 注册的）
         registered_plugins = PluginRegistry.list_all()
+        for p in registered_plugins:
+            p['source'] = 'market'  # 默认为市场安装
+        
         registered_ids = {p.get('id') for p in registered_plugins}
         
-        # 2. 扫描 plugins/ 目录，查找未注册的插件
-        plugins_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plugins')
-        if os.path.isdir(plugins_dir):
-            for item in os.listdir(plugins_dir):
-                item_path = os.path.join(plugins_dir, item)
+        # 2. 扫描 plugins/enabled/ 目录，查找已启用但未通过 plugin_core 注册的插件
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        enabled_dir = os.path.join(base_dir, 'plugins', 'enabled')
+        available_dir = os.path.join(base_dir, 'plugins', 'available')
+        
+        # 扫描 enabled 目录（已启用的插件）
+        if os.path.isdir(enabled_dir):
+            for item in os.listdir(enabled_dir):
+                item_path = os.path.join(enabled_dir, item)
                 if os.path.isdir(item_path) and not item.startswith('__'):
-                    # 检查是否有 plugin.json
                     plugin_json_path = os.path.join(item_path, 'plugin.json')
                     if os.path.isfile(plugin_json_path) and item not in registered_ids:
-                        # 读取 plugin.json
                         try:
                             with open(plugin_json_path, 'r', encoding='utf-8') as f:
                                 manifest = json.load(f)
@@ -659,13 +664,41 @@ def api_list_plugins():
                                 'name': manifest.get('name', item),
                                 'version': manifest.get('version', 'unknown'),
                                 'type': manifest.get('type', 'unknown'),
+                                'category': manifest.get('category', 'db'),  # 从 plugin.json 读取分类
                                 'description': manifest.get('description', ''),
                                 'author': manifest.get('author', ''),
                                 'db_types': manifest.get('db_types', []),
+                                'source': 'local',  # 标记为本地安装
                             })
                             registered_ids.add(item)
                         except Exception as e:
                             logger.warning(f"读取插件 {item} 的 plugin.json 失败: {e}")
+        
+        # 3. 扫描 available 目录（未启用但有目录的插件）
+        if os.path.isdir(available_dir):
+            for item in os.listdir(available_dir):
+                item_path = os.path.join(available_dir, item)
+                if os.path.isdir(item_path) and not item.startswith('__'):
+                    if item not in registered_ids:  # 避免重复
+                        plugin_json_path = os.path.join(item_path, 'plugin.json')
+                        if os.path.isfile(plugin_json_path):
+                            try:
+                                with open(plugin_json_path, 'r', encoding='utf-8') as f:
+                                    manifest = json.load(f)
+                                registered_plugins.append({
+                                    'id': item,
+                                    'name': manifest.get('name', item),
+                                    'version': manifest.get('version', 'unknown'),
+                                    'type': manifest.get('type', 'unknown'),
+                                    'category': manifest.get('category', 'db'),
+                                    'description': manifest.get('description', ''),
+                                    'author': manifest.get('author', ''),
+                                    'db_types': manifest.get('db_types', []),
+                                    'source': 'local',
+                                })
+                                registered_ids.add(item)
+                            except Exception as e:
+                                logger.warning(f"读取插件 {item} 的 plugin.json 失败: {e}")
         
         return jsonify({'ok': True, 'plugins': registered_plugins, 'total': len(registered_plugins)})
     except Exception as e:
