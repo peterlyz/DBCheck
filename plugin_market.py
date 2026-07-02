@@ -117,25 +117,51 @@ class PluginMarket:
         拉取插件市场 registry，带缓存 + 多镜像 fallback + 内置兜底。
         依次尝试 self.registry_urls 中的每个地址，任一个成功即返回。
         所有镜像都失败时，返回内置 builtin_registry.json（如果存在）。
+        
+        增强：如果网络数据不完整（插件数量少于内置数据），则合并内置数据。
         """
         now = time.time()
         if not force and self._cache and (now - self._cache_time) < self.cache_ttl:
             return self._cache
 
         last_error = None
+        network_data = None
         for url in self.registry_urls:
             try:
                 req = Request(url, headers={'User-Agent': 'DBCheck-PluginMarket/1.0'})
                 with urlopen(req, timeout=15) as resp:
                     data = json.loads(resp.read().decode('utf-8'))
-                self._cache = data
-                self._cache_time = now
+                network_data = data
                 logger.info(f"市场数据拉取成功（{url}）: {len(data.get('plugins', []))} 个插件")
-                return data
+                break  # 成功拉取，跳出循环
             except Exception as e:
                 logger.warning(f"拉取市场数据失败（{url}）: {e}")
                 last_error = e
                 continue  # 尝试下一个镜像
+
+        # 如果网络拉取成功，则合并内置数据（内置数据作为补充）
+        if network_data:
+            builtin = self._load_builtin_registry()
+            if builtin:
+                network_plugins = network_data.get('plugins', [])
+                builtin_plugins = builtin.get('plugins', [])
+                
+                # 合并插件（内置数据作为补充，避免重复）
+                existing_ids = {p.get('id') for p in network_plugins}
+                for bp in builtin_plugins:
+                    if bp.get('id') not in existing_ids:
+                        network_plugins.append(bp)
+                        existing_ids.add(bp.get('id'))
+                
+                # 合并分类定义
+                if 'categories' not in network_data and 'categories' in builtin:
+                    network_data['categories'] = builtin['categories']
+                
+                logger.info(f"合并内置数据后: {len(network_plugins)} 个插件")
+            
+            self._cache = network_data
+            self._cache_time = now
+            return network_data
 
         # 所有镜像都失败了，尝试内置兜底
         logger.warning("所有镜像均拉取失败，尝试使用内置 registry.json")

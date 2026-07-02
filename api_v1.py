@@ -632,11 +632,42 @@ def admin_get_token():
 
 @api_v1.route('/plugins', methods=['GET'])
 def api_list_plugins():
-    """列出所有已安装插件"""
+    """列出所有已安装插件（包括市场中没有的）"""
     try:
+        import os
         from plugin_core import PluginRegistry
-        plugins = PluginRegistry.list_all()
-        return jsonify({'ok': True, 'plugins': plugins, 'total': len(plugins)})
+        
+        # 1. 获取已注册的插件
+        registered_plugins = PluginRegistry.list_all()
+        registered_ids = {p.get('id') for p in registered_plugins}
+        
+        # 2. 扫描 plugins/ 目录，查找未注册的插件
+        plugins_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plugins')
+        if os.path.isdir(plugins_dir):
+            for item in os.listdir(plugins_dir):
+                item_path = os.path.join(plugins_dir, item)
+                if os.path.isdir(item_path) and not item.startswith('__'):
+                    # 检查是否有 plugin.json
+                    plugin_json_path = os.path.join(item_path, 'plugin.json')
+                    if os.path.isfile(plugin_json_path) and item not in registered_ids:
+                        # 读取 plugin.json
+                        try:
+                            with open(plugin_json_path, 'r', encoding='utf-8') as f:
+                                manifest = json.load(f)
+                            registered_plugins.append({
+                                'id': item,
+                                'name': manifest.get('name', item),
+                                'version': manifest.get('version', 'unknown'),
+                                'type': manifest.get('type', 'unknown'),
+                                'description': manifest.get('description', ''),
+                                'author': manifest.get('author', ''),
+                                'db_types': manifest.get('db_types', []),
+                            })
+                            registered_ids.add(item)
+                        except Exception as e:
+                            logger.warning(f"读取插件 {item} 的 plugin.json 失败: {e}")
+        
+        return jsonify({'ok': True, 'plugins': registered_plugins, 'total': len(registered_plugins)})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
