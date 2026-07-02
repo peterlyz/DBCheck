@@ -1,0 +1,71 @@
+{
+  "db_type": "mongodb",
+  "description_zh": "MongoDB 默认基线配置",
+  "description_en": "MongoDB Default Baseline Configuration",
+  "baselines": [
+    {
+      "param_name": "authenticationMechanisms",
+      "operator": "!=",
+      "expected_value": "",
+      "risk_level": "HIGH",
+      "description_zh": "应启用身份验证机制（如 SCRAM-SHA-256）",
+      "description_en": "Authentication mechanisms should be configured"
+    },
+    {
+      "param_name": "enableLocalhostAuthBypass",
+      "operator": "==",
+      "expected_value": "false",
+      "risk_level": "HIGH",
+      "description_zh": "生产环境应禁用 localhost 认证绕过",
+      "description_en": "Localhost auth bypass should be disabled in production"
+    },
+    {
+      "param_name": "maxConnections",
+      "operator": ">=",
+      "expected_value": "1000",
+      "risk_level": "MEDIUM",
+      "description_zh": "最大连接数应 >= 1000",
+      "description_en": "Max connections should be >= 1000"
+    },
+    {
+      "param_name": "wiredTigerCacheSizeGB",
+      "operator": ">=",
+      "expected_value": "1",
+      "risk_level": "MEDIUM",
+      "description_zh": "WiredTiger 缓存大小应 >= 1GB",
+      "description_en": "WiredTiger cache size should be >= 1GB"
+    },
+    {
+      "param_name": "writeConcernMajorityJournalDefault",
+      "operator": "==",
+      "expected_value": "true",
+      "risk_level": "HIGH",
+      "description_zh": "writeConcernMajorityJournalDefault 应为 true（保证数据安全）",
+      "description_en": "writeConcernMajorityJournalDefault should be true for data safety"
+    },
+    {
+      "param_name": "slowOpThresholdMs",
+      "operator": "<=",
+      "expected_value": "100",
+      "risk_level": "LOW",
+      "description_zh": "慢查询阈值应 <= 100ms",
+      "description_en": "Slow operation threshold should be <= 100ms"
+    },
+    {
+      "param_name": "logLevel",
+      "operator": "<=",
+      "expected_value": "1",
+      "risk_level": "LOW",
+      "description_zh": "日志级别应 <= 1（0=INFO, 1=WARN）",
+      "description_en": "Log level should be <= 1 (0=INFO, 1=WARN)"
+    },
+    {
+      "param_name": "networkMessageCompressors",
+      "operator": "!=",
+      "expected_value": "",
+      "risk_level": "LOW",
+      "description_zh": "应启用网络消息压缩（snappy/zstd/zlib）",
+      "description_en": "Network message compression should be enabled"
+    }
+  ]
+}

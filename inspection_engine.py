@@ -29,12 +29,13 @@ import traceback
 import time
 import re
 from datetime import datetime
-from docx import Document
-from docx.shared import Pt, RGBColor, Inches, Cm
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import parse_xml
+# docx 相关导入改为延迟导入（在 generate_report 相关方法中导入）
+# from docx import Document
+# from docx.shared import Pt, RGBColor, Inches, Cm
+# from docx.enum.text import WD_ALIGN_PARAGRAPH
+# from docx.enum.table import WD_TABLE_ALIGNMENT
+# from docx.oxml.ns import qn
+# from docx.oxml import parse_xml
 
 import configparser
 import importlib
@@ -1094,6 +1095,14 @@ class BaseInspectionEngine:
     
     def _load_word_template(self, inspector_name="Jack"):
         """加载 Word 模板（创建中文封面模板，支持 docxtpl 渲染）"""
+        # 延迟导入 docx 相关模块
+        from docx import Document
+        from docx.shared import Pt, RGBColor, Inches, Cm
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.table import WD_TABLE_ALIGNMENT
+        from docx.oxml.ns import qn
+        from docx.oxml import parse_xml
+        
         template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
         tpl_file = os.path.join(template_path, f"{self.db_type}_wordtemplates_v1.0.docx")
         

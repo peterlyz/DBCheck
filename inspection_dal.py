@@ -93,7 +93,7 @@ def _ensure_tables(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chapter_id INTEGER NOT NULL,
             query_key VARCHAR(100) NOT NULL,
-            query_sql TEXT NOT NULL,
+            query_sql TEXT,
             query_description_zh TEXT,
             query_description_en TEXT,
             enabled INTEGER DEFAULT 1,
@@ -125,7 +125,7 @@ def _ensure_tables(conn):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             db_type VARCHAR(50) NOT NULL,
             param_name VARCHAR(100) NOT NULL,
-            query_sql TEXT NOT NULL,
+            query_sql TEXT,
             operator VARCHAR(20),
             expected_value TEXT,
             expected_value_min REAL,
@@ -1375,7 +1375,7 @@ if __name__ == '__main__':
 
 # ==================== 基线配置操作 ====================
 
-def create_baseline(db_type: str, param_name: str, query_sql: str,
+def create_baseline(db_type: str, param_name: str, query_sql: str = '',
                      operator: str = '=', expected_value: str = None,
                      expected_value_min: str = None, expected_value_max: str = None,
                      risk_level: str = 'MEDIUM', description_zh: str = None,

@@ -90,7 +90,8 @@ except ImportError:
     print(_t("dm8_driver_missing"))
     print("  pip install dmpython")
     print("  " + _t("dm8_driver_path_note"))
-    sys.exit(1)
+    dm_driver = None
+    DM_DRIVER = None
 
 
 class DmInspector(BaseInspectionEngine):
@@ -112,6 +113,9 @@ class DmInspector(BaseInspectionEngine):
              必须将 host:port 合并到 server 参数中
         """
         try:
+            if dm_driver is None:
+                return False, "达梦数据库驱动未安装，请执行: pip install dmpython"
+            
             # 正确写法：server='host:port'（参考 instance_manager.py 第 448-449 行）
             dsn = '%s:%d' % (self.host, int(self.port))
             self.conn = dm_driver.connect(

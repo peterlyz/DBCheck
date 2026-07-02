@@ -22,6 +22,8 @@ IvorySQL 数据库自动化健康巡检工具 {VER}
 import warnings
 warnings.filterwarnings("ignore")
 
+import sys
+
 # IvorySQL 驱动 (使用 psycopg2，因为 IvorySQL 基于 PostgreSQL)
 try:
     import psycopg2 as ivorysql_driver
@@ -29,9 +31,8 @@ try:
 except ImportError:
     print(_t("ivorysql_driver_missing"))
     print("  pip install psycopg2-binary")
-    sys.exit(1)
-
-import sys
+    ivorysql_driver = None
+    IVORYSQL_DRIVER = None
 import datetime
 import argparse
 import subprocess

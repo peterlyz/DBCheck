@@ -84,12 +84,13 @@ def discover_plugins() -> List[Dict]:
     return plugins
 
 
-def enable_plugin(plugin_name: str) -> bool:
+def enable_plugin(plugin_name: str, auto_init: bool = True) -> bool:
     """
-    启用插件（创建符号链接或复制）
+    启用插件（创建符号链接或复制），并自动初始化模板和基线数据
     
     Args:
         plugin_name: 插件名称（目录名）
+        auto_init: 是否自动初始化模板和基线数据（默认 True）
     
     Returns:
         是否成功
@@ -103,6 +104,9 @@ def enable_plugin(plugin_name: str) -> bool:
     
     if dst.exists():
         print(f"[Plugin] 插件已启用: {plugin_name}")
+        if auto_init:
+            # 即使已启用，也尝试初始化（幂等）
+            _init_plugin_data(dst, auto_init=auto_init)
         return True
     
     try:
@@ -110,10 +114,210 @@ def enable_plugin(plugin_name: str) -> bool:
         import shutil
         shutil.copytree(src, dst)
         print(f"[Plugin] 已启用插件: {plugin_name}")
+        
+        # 自动初始化模板和基线数据
+        if auto_init:
+            _init_plugin_data(dst, auto_init=auto_init)
+        
         return True
     except Exception as e:
         print(f"[Plugin] 启用插件失败: {plugin_name}, 错误: {e}")
         return False
+
+
+def _init_plugin_data(plugin_dir: Path, auto_init: bool = True) -> None:
+    """
+    初始化插件数据（模板和基线）
+    在 enable_plugin() 中自动调用
+    
+    Args:
+        plugin_dir: 插件目录（已启用的）
+        auto_init: 是否自动初始化
+    """
+    if not auto_init:
+        return
+    
+    print(f"[Plugin] 开始初始化插件数据: {plugin_dir.name}")
+    
+    # 1. 初始化巡检模板
+    _init_plugin_templates(plugin_dir)
+    
+    # 2. 初始化基线配置
+    _init_plugin_baselines(plugin_dir)
+    
+    print(f"[Plugin] 插件数据初始化完成: {plugin_dir.name}")
+
+
+def _init_plugin_templates(plugin_dir: Path) -> None:
+    """
+    从 sql_templates.json 初始化巡检模板
+    
+    Args:
+        plugin_dir: 插件目录
+    """
+    import sys
+    import json
+    
+    # 添加项目根目录到路径
+    project_root = Path(__file__).parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    
+    sql_templates_path = plugin_dir / "sql_templates.json"
+    if not sql_templates_path.exists():
+        print(f"[Plugin] 插件无 sql_templates.json，跳过模板初始化")
+        return
+    
+    try:
+        from inspection_dal import (
+            get_db_connection,
+            create_template,
+            create_chapter,
+            create_query,
+            get_templates_by_db_type,
+        )
+        
+        with open(sql_templates_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        # 获取 db_type
+        plugin_json_path = plugin_dir / "plugin.json"
+        if plugin_json_path.exists():
+            with open(plugin_json_path, 'r', encoding='utf-8') as f:
+                plugin_meta = json.load(f)
+                db_type = plugin_meta.get('db_type', plugin_dir.name)
+        else:
+            db_type = plugin_dir.name
+        
+        # 检查是否已有模板（幂等）
+        existing = get_templates_by_db_type(db_type)
+        if existing:
+            print(f"[Plugin] 模板已存在（ID: {existing[0]['id']}），跳过")
+            return
+        
+        # 创建模板
+        template_name_zh = f"{db_type.upper()} 默认巡检模板"
+        template_name_en = f"{db_type.upper()} Default Inspection Template"
+        template_id = create_template(db_type, template_name_zh, template_name_en)
+        print(f"[Plugin] 已创建模板（ID: {template_id}）")
+        
+        # 创建章节和查询
+        chapters = config.get('chapters', [])
+        for ch_data in chapters:
+            chapter_number = ch_data.get('chapter_number', 1)
+            chapter_title_zh = ch_data.get('chapter_title_zh', '未命名章节')
+            chapter_title_en = ch_data.get('chapter_title_en', '')
+            
+            chapter_id = create_chapter(
+                template_id, chapter_number,
+                chapter_title_zh, chapter_title_en
+            )
+            print(f"[Plugin]   已创建章节：{chapter_title_zh} (ID: {chapter_id})")
+            
+            # 创建查询
+            queries = ch_data.get('queries', [])
+            for q_data in queries:
+                query_key = q_data.get('key', '')
+                query_sql = q_data.get('command', q_data.get('query_sql', ''))
+                query_description_zh = q_data.get('desc_zh', '')
+                query_description_en = q_data.get('desc_en', '')
+                sort_order = q_data.get('sort_order', 1)
+                
+                query_id = create_query(
+                    chapter_id, query_key, query_sql,
+                    query_description_zh, query_description_en,
+                    sort_order
+                )
+                print(f"[Plugin]     已创建查询：{query_key} (ID: {query_id})")
+        
+        print(f"[Plugin] 模板初始化完成：{template_name_zh}")
+        
+    except Exception as e:
+        print(f"[Plugin] 模板初始化失败: {e}")
+
+
+def _init_plugin_baselines(plugin_dir: Path) -> None:
+    """
+    从 baselines.json 初始化基线配置
+    
+    Args:
+        plugin_dir: 插件目录
+    """
+    import sys
+    import json
+    
+    # 添加项目根目录到路径
+    project_root = Path(__file__).parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    
+    baselines_path = plugin_dir / "baselines.json"
+    if not baselines_path.exists():
+        print(f"[Plugin] 插件无 baselines.json，跳过基线初始化")
+        return
+    
+    try:
+        from inspection_dal import (
+            get_db_connection,
+            create_baseline,
+            get_baselines_by_db_type,
+        )
+        
+        with open(baselines_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        
+        db_type = config.get('db_type', plugin_dir.name)
+        baselines = config.get('baselines', [])
+        
+        if not baselines:
+            print(f"[Plugin] baselines.json 中无基线数据，跳过")
+            return
+        
+        # 检查是否已有基线（幂等）
+        existing = get_baselines_by_db_type(db_type)
+        if existing:
+            print(f"[Plugin] 基线已存在（{len(existing)} 条），跳过")
+            return
+        
+        # 创建基线
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        created_count = 0
+        for bl_data in baselines:
+            param_name = bl_data.get('param_name', '')
+            operator = bl_data.get('operator', '==')
+            expected_value = str(bl_data.get('expected_value', ''))
+            risk_level = bl_data.get('risk_level', 'LOW')
+            description_zh = bl_data.get('description_zh', '')
+            description_en = bl_data.get('description_en', '')
+            
+            # 检查是否已存在
+            cursor.execute(
+                "SELECT id FROM inspection_baseline WHERE db_type = ? AND param_name = ?",
+                (db_type, param_name)
+            )
+            if cursor.fetchone():
+                continue
+            
+            # 创建基线
+            cursor.execute(
+                """INSERT INTO inspection_baseline 
+                   (db_type, param_name, operator, expected_value, 
+                    risk_level, description_zh, description_en)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (db_type, param_name, operator, expected_value,
+                 risk_level, description_zh, description_en)
+            )
+            created_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"[Plugin] 基线初始化完成：{db_type}，新增 {created_count} 条")
+        
+    except Exception as e:
+        print(f"[Plugin] 基线初始化失败: {e}")
 
 
 def disable_plugin(plugin_name: str) -> bool:
