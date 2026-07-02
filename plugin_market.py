@@ -238,6 +238,7 @@ class PluginMarket:
         """
         安装插件：下载 zip → 解压到 plugins/ → 动态加载
         支持多镜像下载地址 fallback。
+        如果是本地路径（file:// 或绝对路径），则直接复制。
         返回 {'ok': bool, 'message': str}
         """
         plugin = self.get_plugin(plugin_id)
@@ -252,6 +253,12 @@ class PluginMarket:
         target_dir = os.path.join(self._plugins_dir, plugin_id)
         if os.path.isdir(target_dir):
             return {'ok': False, 'message': f'插件 {plugin_id} 已安装，请先卸载'}
+
+        # 支持本地路径（用于测试）
+        if download_url.startswith('file://') or os.path.isfile(download_url):
+            if download_url.startswith('file://'):
+                download_url = download_url[7:]  # 去掉 file://
+            return self._install_from_local(plugin_id, download_url, target_dir)
 
         # 生成镜像下载地址列表
         download_urls = self._get_mirror_download_url(download_url)
@@ -321,6 +328,72 @@ class PluginMarket:
             if tmp_zip_path and os.path.exists(tmp_zip_path):
                 os.unlink(tmp_zip_path)
 
+
+
+    def _install_from_local(self, plugin_id: str, source_path: str, target_dir: str) -> Dict:
+        """
+        从本地安装插件（支持目录或 zip 包）
+        source_path: 本地路径（目录或 zip 文件）
+        target_dir: 安装目标目录
+        """
+        try:
+            # 判断是目录还是 zip 文件
+            if os.path.isdir(source_path):
+                # 直接复制目录
+                if not os.path.isfile(os.path.join(source_path, 'plugin.json')):
+                    return {'ok': False, 'message': '插件目录缺少 plugin.json'}
+                
+                os.makedirs(target_dir, exist_ok=True)
+                for item in os.listdir(source_path):
+                    s = os.path.join(source_path, item)
+                    d = os.path.join(target_dir, item)
+                    if os.path.isdir(s):
+                        shutil.copytree(s, d, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(s, d)
+            elif os.path.isfile(source_path) and source_path.endswith('.zip'):
+                # 解压 zip 文件
+                import tempfile
+                extract_dir = tempfile.mkdtemp(prefix='dbcheck_plugin_')
+                with zipfile.ZipFile(source_path, 'r') as zf:
+                    zf.extractall(extract_dir)
+                
+                # 检测解压后的结构
+                entries = os.listdir(extract_dir)
+                if len(entries) == 1 and os.path.isdir(os.path.join(extract_dir, entries[0])):
+                    src = os.path.join(extract_dir, entries[0])
+                else:
+                    src = extract_dir
+                
+                # 验证 plugin.json 存在
+                if not os.path.isfile(os.path.join(src, 'plugin.json')):
+                    return {'ok': False, 'message': '插件包缺少 plugin.json'}
+                
+                # 复制到目标目录
+                os.makedirs(target_dir, exist_ok=True)
+                for item in os.listdir(src):
+                    s = os.path.join(src, item)
+                    d = os.path.join(target_dir, item)
+                    if os.path.isdir(s):
+                        shutil.copytree(s, d, dirs_exist_ok=True)
+                    else:
+                        shutil.copy2(s, d)
+            else:
+                return {'ok': False, 'message': f'无效的本地路径: {source_path}'}
+            
+            # 动态加载
+            from plugin_loader import load_plugin
+            manifest = load_plugin(target_dir)
+            if manifest:
+                logger.info(f"插件安装成功: {plugin_id}")
+                return {'ok': True, 'message': f'插件 {plugin_id} 安装成功'}
+            else:
+                shutil.rmtree(target_dir, ignore_errors=True)
+                return {'ok': False, 'message': '插件加载失败，已回滚'}
+        except Exception as e:
+            shutil.rmtree(target_dir, ignore_errors=True)
+            return {'ok': False, 'message': f'本地安装失败: {e}'}
+
     def uninstall(self, plugin_id: str) -> Dict:
         """卸载插件：删除目录 + 注销"""
         from plugin_core import PluginRegistry
@@ -338,9 +411,37 @@ class PluginMarket:
         return {'ok': True, 'message': f'已重新加载 {n} 个插件'}
 
     def categories(self) -> List[Dict]:
-        """返回分类列表（含数量）"""
+        """
+        返回分类列表（含数量）
+        优先从 registry.json 的 categories 字段读取分类定义，
+        如果没有则自动从插件列表中统计。
+        """
         data = self.fetch_registry()
         plugins = data.get('plugins', [])
+        
+        # 优先使用 registry.json 中定义的 categories
+        defined_categories = data.get('categories', [])
+        if defined_categories:
+            # 统计每个分类的插件数量
+            cat_count = {}
+            for p in plugins:
+                cat = p.get('category', 'other')
+                cat_count[cat] = cat_count.get(cat, 0) + 1
+            
+            # 返回分类列表（只包含有插件的分类）
+            result = []
+            for cat_def in defined_categories:
+                cat_id = cat_def['id']
+                if cat_id in cat_count:
+                    result.append({
+                        'id': cat_id,
+                        'name': cat_def.get('name', cat_id),
+                        'description': cat_def.get('description', ''),
+                        'count': cat_count[cat_id]
+                    })
+            return result
+        
+        # 如果没有定义 categories，则自动统计
         cat_count = {}
         for p in plugins:
             cat = p.get('category', 'other')
